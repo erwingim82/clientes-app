@@ -18,7 +18,7 @@ jobs:
       - name: Instalar Motor Android (Flutter)
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: '3.19.6'
 
       - name: Instalar Flet Directamente
         run: pip install flet==0.23.2
