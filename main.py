@@ -5,19 +5,37 @@ def main(page: ft.Page):
     # 1. Configuración de la ventana y tema
     page.window_width = 380
     page.window_height = 680
-    page.title = "Fiado App"
+    page.title = "Credi-Personas"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # SISTEMA DE NOTIFICACIONES (CORREGIDO)
+    # MODO CLARO / OSCURO
     # ==========================================
-    def notificar(mensaje, color=ft.colors.GREEN_700):
-        # Usamos page.open() para lanzar la notificación sin trabar la pantalla
-        page.open(ft.SnackBar(ft.Text(mensaje), bgcolor=color, duration=2000))
+    def cambiar_tema(e):
+        if page.theme_mode == ft.ThemeMode.DARK:
+            page.theme_mode = ft.ThemeMode.LIGHT
+            page.bgcolor = ft.colors.BLUE_GREY_50
+            boton_tema.icon = ft.icons.DARK_MODE
+        else:
+            page.theme_mode = ft.ThemeMode.DARK
+            page.bgcolor = ft.colors.BLUE_GREY_900
+            boton_tema.icon = ft.icons.LIGHT_MODE
+        page.update()
+
+    boton_tema = ft.IconButton(
+        icon=ft.icons.LIGHT_MODE,
+        on_click=cambiar_tema
+    )
 
     # ==========================================
-    # VENTANA EMERGENTE "ACERCA DE" (CORREGIDO)
+    # SISTEMA DE NOTIFICACIONES 
+    # ==========================================
+    def notificar(mensaje, color=ft.colors.GREEN_700):
+        page.open(ft.SnackBar(ft.Text(mensaje, color=ft.colors.WHITE), bgcolor=color, duration=2500))
+
+    # ==========================================
+    # VENTANA EMERGENTE "ACERCA DE" 
     # ==========================================
     def cerrar_acerca_de(e):
         page.close(dialogo_acerca)
@@ -28,7 +46,7 @@ def main(page: ft.Page):
     dialogo_acerca = ft.AlertDialog(
         title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
         content=ft.Text(
-            "Fiado App\nVersión V1.0\n\nDesarrollado por: EIM", 
+            "Credi-Personas\nVersión V1.1\n\nDesarrollado por: EIM", 
             size=16, 
             text_align=ft.TextAlign.CENTER
         ),
@@ -42,11 +60,12 @@ def main(page: ft.Page):
     # BARRA SUPERIOR (APPBAR)
     # ==========================================
     page.appbar = ft.AppBar(
-        title=ft.Text("Libreta de Fiados", weight=ft.FontWeight.BOLD),
+        title=ft.Text("Credi-Personas", weight=ft.FontWeight.BOLD),
         center_title=True,
         bgcolor=ft.colors.SURFACE_VARIANT,
         elevation=5,
         actions=[
+            boton_tema, # Agregamos el switch de luz aquí
             ft.IconButton(ft.icons.INFO_OUTLINE, on_click=abrir_acerca_de) 
         ]
     )
@@ -71,8 +90,8 @@ def main(page: ft.Page):
             
             nombre_guardado = entrada_nombre.value
             entrada_nombre.value = ""
-            page.close(dialogo_nuevo) # Cierre seguro de ventana
-            notificar(f"Cliente '{nombre_guardado}' registrado.")
+            page.close(dialogo_nuevo) 
+            notificar(f"Cliente '{nombre_guardado}' registrado.", ft.colors.BLUE_700)
             cargar_datos()
         else:
             notificar("El nombre no puede estar vacío", ft.colors.RED_700)
@@ -101,28 +120,35 @@ def main(page: ft.Page):
             return
             
         if operacion == "restar":
-            monto = -monto
+            monto_final = -monto
+            mensaje = f"Abono de ${monto:.2f} registrado"
+            color_alerta = ft.colors.GREEN_700
+        else:
+            monto_final = monto
+            mensaje = f"Crédito de ${monto:.2f} aplicado"
+            color_alerta = ft.colors.RED_700
             
         conexion = sqlite3.connect("fiados.db")
         cursor = conexion.cursor()
-        cursor.execute("UPDATE clientes SET deuda = deuda + ? WHERE id = ?", (monto, cliente_seleccionado_id))
+        cursor.execute("UPDATE clientes SET deuda = deuda + ? WHERE id = ?", (monto_final, cliente_seleccionado_id))
         conexion.commit()
         conexion.close()
         
         entrada_monto.value = ""
-        page.close(dialogo_deuda) # Cierre seguro de ventana móvil
-        notificar("Saldo actualizado correctamente")
+        page.close(dialogo_deuda) 
+        notificar(mensaje, color_alerta)
         cargar_datos()
 
+    # Botones a color (FilledButton) en la ventana
     dialogo_deuda = ft.AlertDialog(
         title=ft.Text("Actualizar Deuda"),
         content=entrada_monto,
         actions=[
-            ft.TextButton("Fiar (+)", on_click=lambda e: procesar_deuda("sumar"), icon=ft.icons.ADD, icon_color=ft.colors.RED_400),
-            ft.TextButton("Abonar (-)", on_click=lambda e: procesar_deuda("restar"), icon=ft.icons.REMOVE, icon_color=ft.colors.GREEN_400),
+            ft.FilledButton("Crédito (+)", on_click=lambda e: procesar_deuda("sumar"), style=ft.ButtonStyle(bgcolor=ft.colors.RED_700, color=ft.colors.WHITE)),
+            ft.FilledButton("Abonar (-)", on_click=lambda e: procesar_deuda("restar"), style=ft.ButtonStyle(bgcolor=ft.colors.GREEN_700, color=ft.colors.WHITE)),
             ft.TextButton("Cancelar", on_click=cerrar_dialogo_deuda)
         ],
-        actions_alignment=ft.MainAxisAlignment.END,
+        actions_alignment=ft.MainAxisAlignment.CENTER,
     )
 
     def abrir_nuevo_cliente(e):
@@ -177,10 +203,10 @@ def main(page: ft.Page):
                         title=ft.Text(nombre, weight=ft.FontWeight.BOLD, size=18),
                         subtitle=ft.Text(
                             texto_deuda, 
-                            color=ft.colors.RED_300 if deuda > 0 else ft.colors.GREEN_400,
+                            color=ft.colors.RED_400 if deuda > 0 else ft.colors.GREEN_500,
                             weight=ft.FontWeight.W_500
                         ),
-                        trailing=ft.Icon(ft.icons.EDIT_NOTE, color=ft.colors.WHITE54),
+                        trailing=ft.Icon(ft.icons.EDIT_NOTE, color=ft.colors.ON_SURFACE_VARIANT),
                         on_click=abrir_opciones 
                     )
                 )
@@ -193,11 +219,12 @@ def main(page: ft.Page):
     # ==========================================
     # MARCA DE AGUA (CAPAS / STACK)
     # ==========================================
+    # Usamos ON_SURFACE para que el logo se vuelva gris oscuro en modo claro y blanco en modo oscuro
     marca_agua = ft.Container(
         content=ft.Column(
             [
-                ft.Icon(ft.icons.MENU_BOOK, size=150, color=ft.colors.WHITE, opacity=0.03),
-                ft.Text("FIADO APP", size=30, weight=ft.FontWeight.W_900, color=ft.colors.WHITE, opacity=0.03)
+                ft.Icon(ft.icons.MENU_BOOK, size=150, color=ft.colors.ON_SURFACE, opacity=0.04),
+                ft.Text("CREDI-PERSONAS", size=26, weight=ft.FontWeight.W_900, color=ft.colors.ON_SURFACE, opacity=0.04)
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER
