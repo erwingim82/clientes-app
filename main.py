@@ -10,16 +10,20 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # VENTANA EMERGENTE "ACERCA DE"
+    # SISTEMA DE NOTIFICACIONES (CORREGIDO)
+    # ==========================================
+    def notificar(mensaje, color=ft.colors.GREEN_700):
+        # Usamos page.open() para lanzar la notificación sin trabar la pantalla
+        page.open(ft.SnackBar(ft.Text(mensaje), bgcolor=color, duration=2000))
+
+    # ==========================================
+    # VENTANA EMERGENTE "ACERCA DE" (CORREGIDO)
     # ==========================================
     def cerrar_acerca_de(e):
-        dialogo_acerca.open = False
-        page.update()
+        page.close(dialogo_acerca)
 
     def abrir_acerca_de(e):
-        page.dialog = dialogo_acerca
-        dialogo_acerca.open = True
-        page.update()
+        page.open(dialogo_acerca)
 
     dialogo_acerca = ft.AlertDialog(
         title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
@@ -43,18 +47,9 @@ def main(page: ft.Page):
         bgcolor=ft.colors.SURFACE_VARIANT,
         elevation=5,
         actions=[
-            # Botón de información en la esquina superior derecha
             ft.IconButton(ft.icons.INFO_OUTLINE, on_click=abrir_acerca_de) 
         ]
     )
-
-    # ==========================================
-    # SISTEMA DE NOTIFICACIONES
-    # ==========================================
-    def notificar(mensaje, color=ft.colors.GREEN_700):
-        page.snack_bar = ft.SnackBar(ft.Text(mensaje), bgcolor=color, duration=2000)
-        page.snack_bar.open = True
-        page.update()
 
     # ==========================================
     # VENTANAS EMERGENTES (NUEVO Y DEUDA)
@@ -64,8 +59,7 @@ def main(page: ft.Page):
     entrada_nombre = ft.TextField(label="Nombre completo", capitalization=ft.TextCapitalization.WORDS)
     
     def cerrar_dialogo_nuevo(e):
-        dialogo_nuevo.open = False
-        page.update()
+        page.close(dialogo_nuevo)
 
     def guardar_nuevo_cliente(e):
         if entrada_nombre.value:
@@ -75,9 +69,10 @@ def main(page: ft.Page):
             conexion.commit()
             conexion.close()
             
-            notificar(f"Cliente '{entrada_nombre.value}' registrado.")
+            nombre_guardado = entrada_nombre.value
             entrada_nombre.value = ""
-            dialogo_nuevo.open = False
+            page.close(dialogo_nuevo) # Cierre seguro de ventana
+            notificar(f"Cliente '{nombre_guardado}' registrado.")
             cargar_datos()
         else:
             notificar("El nombre no puede estar vacío", ft.colors.RED_700)
@@ -96,8 +91,7 @@ def main(page: ft.Page):
     entrada_monto = ft.TextField(label="Monto ($)", keyboard_type=ft.KeyboardType.NUMBER)
 
     def cerrar_dialogo_deuda(e):
-        dialogo_deuda.open = False
-        page.update()
+        page.close(dialogo_deuda)
 
     def procesar_deuda(operacion):
         try:
@@ -116,7 +110,7 @@ def main(page: ft.Page):
         conexion.close()
         
         entrada_monto.value = ""
-        dialogo_deuda.open = False
+        page.close(dialogo_deuda) # Cierre seguro de ventana móvil
         notificar("Saldo actualizado correctamente")
         cargar_datos()
 
@@ -132,17 +126,13 @@ def main(page: ft.Page):
     )
 
     def abrir_nuevo_cliente(e):
-        page.dialog = dialogo_nuevo
-        dialogo_nuevo.open = True
-        page.update()
+        page.open(dialogo_nuevo)
 
     def abrir_opciones(e):
         nonlocal cliente_seleccionado_id
         cliente_seleccionado_id = e.control.data
         dialogo_deuda.title.value = f"Monto para {e.control.title.value}"
-        page.dialog = dialogo_deuda
-        dialogo_deuda.open = True
-        page.update()
+        page.open(dialogo_deuda)
 
     # ==========================================
     # BOTÓN FLOTANTE (ESTILO MÓVIL)
