@@ -35,7 +35,7 @@ def main(page: ft.Page):
         page.open(ft.SnackBar(ft.Text(mensaje, color=ft.colors.WHITE), bgcolor=color, duration=2500))
 
     # ==========================================
-    # VENTANA EMERGENTE "ACERCA DE" 
+    # VENTANA EMERGENTE "ACERCA DE" Y SUGERENCIAS
     # ==========================================
     def cerrar_acerca_de(e):
         page.close(dialogo_acerca)
@@ -43,12 +43,27 @@ def main(page: ft.Page):
     def abrir_acerca_de(e):
         page.open(dialogo_acerca)
 
+    # Hipervínculo hacia el correo electrónico
+    def enviar_correo(e):
+        page.launch_url("mailto:myconsultingsca@gmail.com?subject=Sugerencias App Credi-Personas")
+
     dialogo_acerca = ft.AlertDialog(
         title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-        content=ft.Text(
-            "Credi-Personas\nVersión V1.1\n\nDesarrollado por: EIM", 
-            size=16, 
-            text_align=ft.TextAlign.CENTER
+        content=ft.Column(
+            [
+                ft.Text("Credi-Personas\nVersión V1.2\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER),
+                ft.Divider(color=ft.colors.TRANSPARENT), # Espacio en blanco
+                ft.TextButton(
+                    content=ft.Row(
+                        [ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Enviar sugerencias", color=ft.colors.BLUE_400)],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        tight=True
+                    ),
+                    on_click=enviar_correo
+                )
+            ],
+            tight=True, # Ajusta el tamaño de la columna a su contenido
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER
         ),
         actions=[
             ft.TextButton("Cerrar", on_click=cerrar_acerca_de)
@@ -65,14 +80,15 @@ def main(page: ft.Page):
         bgcolor=ft.colors.SURFACE_VARIANT,
         elevation=5,
         actions=[
-            boton_tema, # Agregamos el switch de luz aquí
+            boton_tema,
             ft.IconButton(ft.icons.INFO_OUTLINE, on_click=abrir_acerca_de) 
         ]
     )
 
     # ==========================================
-    # VENTANAS EMERGENTES (NUEVO Y DEUDA)
+    # VENTANAS EMERGENTES (CRUD)
     # ==========================================
+    cliente_seleccionado_id = None
     
     # --- A. Dialogo para Nuevo Cliente ---
     entrada_nombre = ft.TextField(label="Nombre completo", capitalization=ft.TextCapitalization.WORDS)
@@ -106,7 +122,6 @@ def main(page: ft.Page):
     )
 
     # --- B. Dialogo para Actualizar Deuda ---
-    cliente_seleccionado_id = None
     entrada_monto = ft.TextField(label="Monto ($)", keyboard_type=ft.KeyboardType.NUMBER)
 
     def cerrar_dialogo_deuda(e):
@@ -139,7 +154,6 @@ def main(page: ft.Page):
         notificar(mensaje, color_alerta)
         cargar_datos()
 
-    # Botones a color (FilledButton) en la ventana
     dialogo_deuda = ft.AlertDialog(
         title=ft.Text("Actualizar Deuda"),
         content=entrada_monto,
@@ -151,6 +165,32 @@ def main(page: ft.Page):
         actions_alignment=ft.MainAxisAlignment.CENTER,
     )
 
+    # --- C. Dialogo para Confirmar Eliminación ---
+    def cerrar_dialogo_eliminar(e):
+        page.close(dialogo_eliminar)
+
+    def eliminar_cliente_bd(e):
+        conexion = sqlite3.connect("fiados.db")
+        cursor = conexion.cursor()
+        cursor.execute("DELETE FROM clientes WHERE id = ?", (cliente_seleccionado_id,))
+        conexion.commit()
+        conexion.close()
+        
+        page.close(dialogo_eliminar)
+        notificar("Cliente eliminado correctamente.", ft.colors.RED_700)
+        cargar_datos()
+
+    dialogo_eliminar = ft.AlertDialog(
+        title=ft.Text("Eliminar Cliente", color=ft.colors.RED_400),
+        content=ft.Text("¿Estás seguro de que deseas eliminar este registro?\nEsta acción no se puede deshacer."),
+        actions=[
+            ft.TextButton("Sí, eliminar", on_click=eliminar_cliente_bd, style=ft.ButtonStyle(color=ft.colors.RED_400)),
+            ft.TextButton("No, cancelar", on_click=cerrar_dialogo_eliminar)
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+
+    # Controladores de apertura
     def abrir_nuevo_cliente(e):
         page.open(dialogo_nuevo)
 
@@ -159,6 +199,11 @@ def main(page: ft.Page):
         cliente_seleccionado_id = e.control.data
         dialogo_deuda.title.value = f"Monto para {e.control.title.value}"
         page.open(dialogo_deuda)
+
+    def abrir_confirmacion_eliminar(e):
+        nonlocal cliente_seleccionado_id
+        cliente_seleccionado_id = e.control.data
+        page.open(dialogo_eliminar)
 
     # ==========================================
     # BOTÓN FLOTANTE (ESTILO MÓVIL)
@@ -206,7 +251,13 @@ def main(page: ft.Page):
                             color=ft.colors.RED_400 if deuda > 0 else ft.colors.GREEN_500,
                             weight=ft.FontWeight.W_500
                         ),
-                        trailing=ft.Icon(ft.icons.EDIT_NOTE, color=ft.colors.ON_SURFACE_VARIANT),
+                        # Icono de papelera que abre el diálogo de eliminación
+                        trailing=ft.IconButton(
+                            icon=ft.icons.DELETE_OUTLINE, 
+                            icon_color=ft.colors.RED_400,
+                            data=id_cliente,
+                            on_click=abrir_confirmacion_eliminar
+                        ),
                         on_click=abrir_opciones 
                     )
                 )
@@ -219,7 +270,6 @@ def main(page: ft.Page):
     # ==========================================
     # MARCA DE AGUA (CAPAS / STACK)
     # ==========================================
-    # Usamos ON_SURFACE para que el logo se vuelva gris oscuro en modo claro y blanco en modo oscuro
     marca_agua = ft.Container(
         content=ft.Column(
             [
