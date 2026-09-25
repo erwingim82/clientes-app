@@ -1,7 +1,7 @@
 import flet as ft
 import sqlite3
 from datetime import datetime
-import urllib.parse  # Librería para dar formato web a los mensajes de WhatsApp/Correo
+import urllib.parse 
 
 def main(page: ft.Page):
     # 1. Configuración de la ventana y tema
@@ -12,18 +12,17 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # INICIALIZAR BASE DE DATOS (MIGRACIÓN V1.5)
+    # INICIALIZAR BASE DE DATOS
     # ==========================================
     def inicializar_bd():
         conexion = sqlite3.connect("fiados.db")
         cursor = conexion.cursor()
         cursor.execute("CREATE TABLE IF NOT EXISTS clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, deuda REAL)")
         
-        # Intentamos agregar las nuevas columnas si la app viene de versiones anteriores
         try:
             cursor.execute("ALTER TABLE clientes ADD COLUMN telefono TEXT")
         except:
-            pass # Si ya existe, simplemente lo ignora
+            pass 
             
         try:
             cursor.execute("ALTER TABLE clientes ADD COLUMN correo TEXT")
@@ -81,7 +80,7 @@ def main(page: ft.Page):
         title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
         content=ft.Column(
             [
-                ft.Text("Credi-Personas\nVersión V1.5\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER),
+                ft.Text("Credi-Personas\nVersión V1.6\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER),
                 ft.Divider(color=ft.colors.TRANSPARENT),
                 ft.TextButton(
                     content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Enviar sugerencias", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True),
@@ -117,7 +116,6 @@ def main(page: ft.Page):
     
     # --- A. Dialogo para Nuevo Cliente ---
     entrada_nombre = ft.TextField(label="Nombre completo", capitalization=ft.TextCapitalization.WORDS)
-    # Nuevos campos
     entrada_telefono = ft.TextField(label="Teléfono (Ej: 584241234567)", keyboard_type=ft.KeyboardType.PHONE)
     entrada_correo = ft.TextField(label="Correo electrónico", keyboard_type=ft.KeyboardType.EMAIL)
     
@@ -149,8 +147,49 @@ def main(page: ft.Page):
         actions=[ft.TextButton("Guardar", on_click=guardar_nuevo_cliente), ft.TextButton("Cancelar", on_click=cerrar_dialogo_nuevo)]
     )
 
-    # --- B. Dialogo para Actualizar Deuda (CON CALENDARIO Y NOTIFICACIONES) ---
-    entrada_monto = ft.TextField(label="Monto ($)", keyboard_type=ft.KeyboardType.NUMBER)
+    # --- NUEVO: Dialogo para Editar Cliente ---
+    editar_nombre = ft.TextField(label="Nombre completo", capitalization=ft.TextCapitalization.WORDS)
+    editar_telefono = ft.TextField(label="Teléfono (Ej: 584241234567)", keyboard_type=ft.KeyboardType.PHONE)
+    editar_correo = ft.TextField(label="Correo electrónico", keyboard_type=ft.KeyboardType.EMAIL)
+
+    def cerrar_dialogo_editar(e):
+        page.close(dialogo_editar)
+
+    def guardar_edicion_cliente(e):
+        if editar_nombre.value:
+            conexion = sqlite3.connect("fiados.db")
+            cursor = conexion.cursor()
+            cursor.execute("UPDATE clientes SET nombre = ?, telefono = ?, correo = ? WHERE id = ?", 
+                           (editar_nombre.value, editar_telefono.value, editar_correo.value, cliente_seleccionado_id))
+            conexion.commit()
+            conexion.close()
+            
+            page.close(dialogo_editar)
+            notificar("Datos actualizados correctamente.", ft.colors.BLUE_700)
+            cargar_datos()
+        else:
+            notificar("El nombre no puede estar vacío", ft.colors.RED_700)
+
+    dialogo_editar = ft.AlertDialog(
+        title=ft.Text("Editar Cliente"),
+        content=ft.Column([editar_nombre, editar_telefono, editar_correo], tight=True),
+        actions=[
+            ft.TextButton("Actualizar", on_click=guardar_edicion_cliente), 
+            ft.TextButton("Cancelar", on_click=cerrar_dialogo_editar)
+        ]
+    )
+
+    def abrir_dialogo_editar(id_cliente, nombre, tlf, correo):
+        nonlocal cliente_seleccionado_id
+        cliente_seleccionado_id = id_cliente
+        # Precargar los datos actuales en los campos
+        editar_nombre.value = nombre
+        editar_telefono.value = tlf
+        editar_correo.value = correo
+        page.open(dialogo_editar)
+
+    # --- B. Dialogo para Actualizar Deuda ---
+    entrada_monto = ft.TextField(label="Ingrese el monto", keyboard_type=ft.KeyboardType.NUMBER)
     
     opcion_notificacion = ft.Dropdown(
         label="Enviar Recibo por:",
@@ -182,7 +221,7 @@ def main(page: ft.Page):
         try:
             monto = float(entrada_monto.value.replace(",", ".")) 
         except (ValueError, TypeError):
-            notificar("Ingresa un monto numérico válido", ft.colors.RED_700)
+            notificar("Monto numérico inválido", ft.colors.RED_700)
             return
             
         fecha = boton_fecha.text
@@ -190,21 +229,19 @@ def main(page: ft.Page):
             
         if operacion == "restar":
             monto_bd = -monto
-            tipo_transaccion = "Abono"
-            mensaje = f"Abono de ${monto:.2f} registrado"
+            tipo_transaccion = "Amortización"
+            mensaje = f"Amortización de ${monto:.2f} registrada"
             color_alerta = ft.colors.GREEN_700
         else:
             monto_bd = monto
             tipo_transaccion = "Crédito"
-            mensaje = f"Crédito de ${monto:.2f} aplicado"
+            mensaje = f"Crédito de ${monto:.2f} otorgado"
             color_alerta = ft.colors.RED_700
             
-        # Calcular el nuevo saldo para enviarlo en el recibo
         saldo_final = cliente_seleccionado_deuda + monto_bd
         
-        # Construir el texto del recibo
-        texto_recibo = f"🧾 *RECIBO CREDI-PERSONAS*\nHola {cliente_seleccionado_nombre}, se ha registrado un {tipo_transaccion} de *${monto:.2f}* el {fecha} a las {hora}.\n\nTu saldo actualizado es de: *${saldo_final:.2f}*."
-        texto_recibo_url = urllib.parse.quote(texto_recibo) # Codificar para web/WhatsApp
+        texto_recibo = f"🧾 *RECIBO CREDI-PERSONAS*\nHola {cliente_seleccionado_nombre}, se ha registrado un/a {tipo_transaccion} por *${monto:.2f}* el {fecha} a las {hora}.\n\nTu saldo actualizado es de: *${saldo_final:.2f}*."
+        texto_recibo_url = urllib.parse.quote(texto_recibo) 
 
         conexion = sqlite3.connect("fiados.db")
         cursor = conexion.cursor()
@@ -218,10 +255,8 @@ def main(page: ft.Page):
         eleccion_notif = opcion_notificacion.value
         page.close(dialogo_deuda) 
         
-        # Disparar las integraciones según lo que se seleccionó
         if eleccion_notif == "WhatsApp":
             if cliente_seleccionado_tlf:
-                # Limpiar el teléfono de símbolos o espacios (por si escriben +58)
                 tel_limpio = cliente_seleccionado_tlf.replace("+", "").replace(" ", "")
                 page.launch_url(f"https://wa.me/{tel_limpio}?text={texto_recibo_url}")
                 notificar("Abriendo WhatsApp...", color_alerta)
@@ -250,11 +285,11 @@ def main(page: ft.Page):
     )
 
     dialogo_deuda = ft.AlertDialog(
-        title=ft.Text("Actualizar Deuda"),
+        title=ft.Text("Registrar Operación"),
         content=contenido_deuda,
         actions=[
-            ft.FilledButton("Crédito (+)", on_click=lambda e: procesar_deuda("sumar"), style=ft.ButtonStyle(bgcolor=ft.colors.RED_700, color=ft.colors.WHITE)),
-            ft.FilledButton("Abonar (-)", on_click=lambda e: procesar_deuda("restar"), style=ft.ButtonStyle(bgcolor=ft.colors.GREEN_700, color=ft.colors.WHITE)),
+            ft.FilledButton("Otorgar crédito", on_click=lambda e: procesar_deuda("sumar"), style=ft.ButtonStyle(bgcolor=ft.colors.RED_700, color=ft.colors.WHITE)),
+            ft.FilledButton("Amortizar capital", on_click=lambda e: procesar_deuda("restar"), style=ft.ButtonStyle(bgcolor=ft.colors.GREEN_700, color=ft.colors.WHITE)),
             ft.TextButton("Cancelar", on_click=cerrar_dialogo_deuda)
         ],
         actions_alignment=ft.MainAxisAlignment.CENTER,
@@ -300,7 +335,7 @@ def main(page: ft.Page):
         
         dialogo_deuda.title.value = f"Operación: {nombre_cliente}"
         boton_fecha.text = datetime.now().strftime("%d/%m/%Y")
-        opcion_notificacion.value = "Ninguna" # Reiniciar menú al abrir
+        opcion_notificacion.value = "Ninguna" 
         page.open(dialogo_deuda)
 
     def abrir_confirmacion_eliminar(id_cliente):
@@ -323,7 +358,6 @@ def main(page: ft.Page):
         
         conexion = sqlite3.connect("fiados.db")
         cursor = conexion.cursor()
-        # Traemos también los nuevos campos
         cursor.execute("SELECT id, nombre, deuda, telefono, correo FROM clientes ORDER BY nombre ASC") 
         clientes = cursor.fetchall()
         
@@ -334,7 +368,6 @@ def main(page: ft.Page):
             telefono = cliente[3] if cliente[3] else ""
             correo = cliente[4] if cliente[4] else ""
             
-            # Formato de la tarjeta con los nuevos datos
             texto_subtitulo = f"Deuda: ${deuda:.2f}"
             datos_contacto = []
             if telefono: datos_contacto.append(f"📱 {telefono}")
@@ -368,10 +401,14 @@ def main(page: ft.Page):
                     ft.Container(content=ft.Text("Sin movimientos registrados", size=12, color=ft.colors.ON_SURFACE_VARIANT), padding=ft.padding.only(left=20, bottom=10))
                 )
                 
+            # --- MODIFICADO: Nueva fila de botones con la opción de Editar ---
             fila_botones = ft.Row(
                 [
                     ft.TextButton("Nueva Operación", icon=ft.icons.ADD_CARD, icon_color=ft.colors.BLUE_400, on_click=lambda e, id_c=id_cliente, nom=nombre, tlf=telefono, corr=correo, d=deuda: abrir_opciones(id_c, nom, tlf, corr, d)),
-                    ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=ft.colors.RED_400, tooltip="Eliminar Cliente", on_click=lambda e, id_c=id_cliente: abrir_confirmacion_eliminar(id_c))
+                    ft.Row([
+                        ft.IconButton(icon=ft.icons.EDIT, icon_color=ft.colors.ORANGE_400, tooltip="Editar Cliente", on_click=lambda e, id_c=id_cliente, n=nombre, t=telefono, c=correo: abrir_dialogo_editar(id_c, n, t, c)),
+                        ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=ft.colors.RED_400, tooltip="Eliminar Cliente", on_click=lambda e, id_c=id_cliente: abrir_confirmacion_eliminar(id_c))
+                    ])
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN
             )
