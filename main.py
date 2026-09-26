@@ -18,7 +18,6 @@ def main(page: ft.Page):
 
     def inicializar_bd():
         conexion = sqlite3.connect(DB_NAME)
-        # Forzamos la escritura inmediata en disco
         conexion.execute("PRAGMA synchronous = FULL")
         cursor = conexion.cursor()
         
@@ -47,10 +46,8 @@ def main(page: ft.Page):
         page.clean()
         page.appbar = None 
         
-        # Validamos primero con la memoria flash instantánea de Android
         hay_usuarios = page.client_storage.contains_key("admin_creado")
         
-        # Si no está en flash (ej. borró caché), verificamos SQLite
         if not hay_usuarios:
             conexion = sqlite3.connect(DB_NAME)
             cursor = conexion.cursor()
@@ -60,8 +57,9 @@ def main(page: ft.Page):
             if hay_usuarios:
                 page.client_storage.set("admin_creado", True)
 
-        txt_usuario = ft.TextField(label="Usuario", prefix_icon=ft.icons.PERSON, width=300)
-        txt_clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, prefix_icon=ft.icons.LOCK, width=300)
+        # Campos con bordes rojos para visibilidad
+        txt_usuario = ft.TextField(label="Usuario", prefix_icon=ft.icons.PERSON, width=300, border_color=ft.colors.RED_400)
+        txt_clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, prefix_icon=ft.icons.LOCK, width=300, border_color=ft.colors.RED_400)
         
         drop_pregunta = ft.Dropdown(
             label="Pregunta de Seguridad",
@@ -70,9 +68,9 @@ def main(page: ft.Page):
                 ft.dropdown.Option("¿En qué ciudad naciste?"),
                 ft.dropdown.Option("¿Cuál es tu color favorito?"),
                 ft.dropdown.Option("¿Nombre de tu mejor amigo de la infancia?"),
-            ], width=300
+            ], width=300, border_color=ft.colors.RED_400
         )
-        txt_respuesta = ft.TextField(label="Respuesta secreta", width=300)
+        txt_respuesta = ft.TextField(label="Respuesta secreta", width=300, border_color=ft.colors.RED_400)
 
         def iniciar_sesion(e):
             conexion = sqlite3.connect(DB_NAME)
@@ -96,18 +94,16 @@ def main(page: ft.Page):
                 conexion.commit()
                 conexion.close()
                 
-                # Sello de seguridad en la memoria flash (Evita el error al cerrar de golpe)
                 page.client_storage.set("admin_creado", True)
-                
                 notificar("Administrador creado con éxito", ft.colors.BLUE_700)
                 construir_interfaz_principal()
             else:
                 notificar("Por favor completa todos los campos", ft.colors.RED_700)
 
         # --- RECUPERACIÓN DE CLAVE ---
-        txt_rec_usuario = ft.TextField(label="Tu Usuario")
-        txt_rec_respuesta = ft.TextField(label="Respuesta")
-        txt_rec_nueva_clave = ft.TextField(label="Nueva Contraseña", password=True, can_reveal_password=True)
+        txt_rec_usuario = ft.TextField(label="Tu Usuario", border_color=ft.colors.RED_400)
+        txt_rec_respuesta = ft.TextField(label="Respuesta", border_color=ft.colors.RED_400)
+        txt_rec_nueva_clave = ft.TextField(label="Nueva Contraseña", password=True, can_reveal_password=True, border_color=ft.colors.RED_400)
         lbl_pregunta = ft.Text(weight=ft.FontWeight.BOLD)
         paso_recuperacion = 1
         usuario_recuperacion = ""
@@ -204,7 +200,7 @@ def main(page: ft.Page):
 
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.9 (Prod)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.10 (Prod)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
@@ -218,9 +214,9 @@ def main(page: ft.Page):
         cliente_seleccionado_deuda = 0.0
 
         # --- A. Nuevo Cliente ---
-        entrada_nombre = ft.TextField(label="Nombre completo", capitalization=ft.TextCapitalization.WORDS)
-        entrada_telefono = ft.TextField(label="Teléfono (Ej: +584241234567)", keyboard_type=ft.KeyboardType.PHONE)
-        entrada_correo = ft.TextField(label="Correo electrónico", keyboard_type=ft.KeyboardType.EMAIL)
+        entrada_nombre = ft.TextField(label="Nombre completo", capitalization=ft.TextCapitalization.WORDS, border_color=ft.colors.RED_400)
+        entrada_telefono = ft.TextField(label="Teléfono (Ej: +584241234567)", keyboard_type=ft.KeyboardType.PHONE, border_color=ft.colors.RED_400)
+        entrada_correo = ft.TextField(label="Correo electrónico", keyboard_type=ft.KeyboardType.EMAIL, border_color=ft.colors.RED_400)
         
         def guardar_nuevo_cliente(e):
             if entrada_nombre.value:
@@ -239,9 +235,9 @@ def main(page: ft.Page):
         dialogo_nuevo = ft.AlertDialog(title=ft.Text("Nuevo Cliente"), content=ft.Column([entrada_nombre, entrada_telefono, entrada_correo], tight=True), actions=[ft.TextButton("Guardar", on_click=guardar_nuevo_cliente), ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_nuevo))])
 
         # --- B. Editar Cliente ---
-        editar_nombre = ft.TextField(label="Nombre completo", capitalization=ft.TextCapitalization.WORDS)
-        editar_telefono = ft.TextField(label="Teléfono (Ej: +584241234567)", keyboard_type=ft.KeyboardType.PHONE)
-        editar_correo = ft.TextField(label="Correo electrónico", keyboard_type=ft.KeyboardType.EMAIL)
+        editar_nombre = ft.TextField(label="Nombre completo", capitalization=ft.TextCapitalization.WORDS, border_color=ft.colors.RED_400)
+        editar_telefono = ft.TextField(label="Teléfono (Ej: +584241234567)", keyboard_type=ft.KeyboardType.PHONE, border_color=ft.colors.RED_400)
+        editar_correo = ft.TextField(label="Correo electrónico", keyboard_type=ft.KeyboardType.EMAIL, border_color=ft.colors.RED_400)
 
         def confirmar_edicion_bd(e):
             conexion = sqlite3.connect(DB_NAME)
@@ -263,9 +259,9 @@ def main(page: ft.Page):
             editar_nombre.value, editar_telefono.value, editar_correo.value = nombre, tlf, correo
             page.open(dialogo_editar)
 
-        # --- C. Registrar Operación ---
-        entrada_monto = ft.TextField(label="Ingrese el monto", keyboard_type=ft.KeyboardType.NUMBER)
-        opcion_notificacion = ft.Dropdown(label="Enviar Recibo por:", options=[ft.dropdown.Option("Ninguna"), ft.dropdown.Option("WhatsApp"), ft.dropdown.Option("Correo Electrónico")], value="Ninguna")
+        # --- C. Registrar Operación (Con Control de Saldo Negativo) ---
+        entrada_monto = ft.TextField(label="Ingrese el monto", keyboard_type=ft.KeyboardType.NUMBER, border_color=ft.colors.RED_400)
+        opcion_notificacion = ft.Dropdown(label="Enviar Recibo por:", options=[ft.dropdown.Option("Ninguna"), ft.dropdown.Option("WhatsApp"), ft.dropdown.Option("Correo Electrónico")], value="Ninguna", border_color=ft.colors.RED_400)
         
         def cambiar_fecha(e):
             if selector_fecha.value:
@@ -283,6 +279,10 @@ def main(page: ft.Page):
             fecha, hora = boton_fecha.text, datetime.now().strftime("%I:%M %p")
                 
             if operacion == "restar":
+                # Validar que no amortice más de lo que debe
+                if monto > cliente_seleccionado_deuda:
+                    return notificar(f"No puedes amortizar más de la deuda actual (${cliente_seleccionado_deuda:.2f})", ft.colors.ORANGE_700)
+                    
                 monto_bd, tipo_transaccion, color_alerta, mensaje = -monto, "Amortización", ft.colors.GREEN_700, f"Amortización de ${monto:.2f} registrada"
             else:
                 monto_bd, tipo_transaccion, color_alerta, mensaje = monto, "Crédito", ft.colors.RED_700, f"Crédito de ${monto:.2f} otorgado"
