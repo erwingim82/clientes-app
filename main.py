@@ -12,9 +12,15 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # BASE DE DATOS SEGURA CON AUTOREINTENTO
+    # RUTA PERMANENTE BLINDADA (EVITA EL REINICIO)
     # ==========================================
-    DB_NAME = "credipersonas.db"
+    try:
+        directorio_usuario = os.path.expanduser("~")
+        if not os.path.exists(directorio_usuario):
+            os.makedirs(directorio_usuario, exist_ok=True)
+        DB_NAME = os.path.join(directorio_usuario, "credipersonas_definitiva.db")
+    except:
+        DB_NAME = "credipersonas.db" # Respaldo de seguridad si falla
 
     def inicializar_bd():
         try:
@@ -41,9 +47,6 @@ def main(page: ft.Page):
 
     def notificar(mensaje, color=ft.colors.GREEN_700):
         page.open(ft.SnackBar(ft.Text(mensaje, color=ft.colors.WHITE), bgcolor=color, duration=3000))
-
-    # Función blindada para abrir enlaces externos (Evita el error "No se pudo abrir el enlace")
-    function_lanzar_url = lambda url: page.launch_url(url)
 
     # ==========================================
     # MÓDULO DE LOGIN, REGISTRO Y RECUPERACIÓN
@@ -191,7 +194,7 @@ def main(page: ft.Page):
 
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.16 (Estable)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.17 (Definitiva)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
