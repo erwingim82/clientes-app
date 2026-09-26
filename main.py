@@ -1,5 +1,6 @@
 import flet as ft
 import sqlite3
+import os
 from datetime import datetime
 import urllib.parse
 
@@ -11,9 +12,11 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # BASE DE DATOS
+    # BASE DE DATOS SEGURA (ANCLADA A MEMORIA FIJA)
     # ==========================================
-    DB_NAME = "credipersonas_prod.db"
+    # Extraemos la ruta profunda y permanente del celular (HOME)
+    directorio_seguro = os.environ.get("HOME", os.path.abspath(os.getcwd()))
+    DB_NAME = os.path.join(directorio_seguro, "credipersonas_blindado.db")
 
     def inicializar_bd():
         conexion = sqlite3.connect(DB_NAME)
@@ -51,10 +54,10 @@ def main(page: ft.Page):
             conexion = sqlite3.connect(DB_NAME)
             cursor = conexion.cursor()
             cursor.execute("SELECT COUNT(*) FROM usuarios")
-            hay_usuarios = cursor.fetchone()[0] > 0
-            conexion.close()
-            if hay_usuarios:
+            if cursor.fetchone()[0] > 0:
+                hay_usuarios = True
                 page.client_storage.set("admin_creado", True)
+            conexion.close()
 
         txt_usuario = ft.TextField(label="Usuario", prefix_icon=ft.icons.PERSON, width=300, border_color=ft.colors.RED_400)
         txt_clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, prefix_icon=ft.icons.LOCK, width=300, border_color=ft.colors.RED_400)
@@ -98,6 +101,7 @@ def main(page: ft.Page):
             else:
                 notificar("Por favor completa todos los campos", ft.colors.RED_700)
 
+        # --- RECUPERACIÓN DE CLAVE ---
         txt_rec_usuario = ft.TextField(label="Tu Usuario", border_color=ft.colors.RED_400)
         txt_rec_respuesta = ft.TextField(label="Respuesta", border_color=ft.colors.RED_400)
         txt_rec_nueva_clave = ft.TextField(label="Nueva Contraseña", password=True, can_reveal_password=True, border_color=ft.colors.RED_400)
@@ -165,10 +169,6 @@ def main(page: ft.Page):
     def construir_interfaz_principal():
         page.clean()
 
-        # Variables globales para la exportación
-        cliente_exportar_id = None
-        cliente_exportar_nombre = ""
-
         def cambiar_tema(e):
             if page.theme_mode == ft.ThemeMode.DARK:
                 page.theme_mode, page.bgcolor, boton_tema.icon = ft.ThemeMode.LIGHT, ft.colors.BLUE_GREY_50, ft.icons.DARK_MODE
@@ -178,47 +178,9 @@ def main(page: ft.Page):
 
         boton_tema = ft.IconButton(icon=ft.icons.LIGHT_MODE, on_click=cambiar_tema)
 
-        # --- EXPORTAR A EXCEL (CSV) ---
-        def guardar_csv(e: ft.FilePickerResultEvent):
-            if e.path:
-                try:
-                    conexion = sqlite3.connect(DB_NAME)
-                    cursor = conexion.cursor()
-                    cursor.execute("SELECT fecha, hora, tipo, monto FROM transacciones WHERE cliente_id = ? ORDER BY id ASC", (cliente_exportar_id,))
-                    historial = cursor.fetchall()
-                    cursor.execute("SELECT deuda FROM clientes WHERE id = ?", (cliente_exportar_id,))
-                    deuda_actual = cursor.fetchone()[0]
-                    conexion.close()
-
-                    # utf-8-sig obliga a Excel a reconocer los caracteres latinos correctamente
-                    with open(e.path, "w", encoding="utf-8-sig") as f:
-                        f.write(f"ESTADO DE CUENTA: {cliente_exportar_nombre.upper()}\n")
-                        f.write(f"DEUDA TOTAL ACTUAL:,${deuda_actual:.2f}\n\n")
-                        f.write("Fecha,Hora,Operacion,Monto\n")
-                        for row in historial:
-                            f.write(f"{row[0]},{row[1]},{row[2]},${row[3]:.2f}\n")
-
-                    notificar("Excel guardado con éxito. Búscalo en tus archivos.", ft.colors.GREEN_700)
-                except Exception as ex:
-                    notificar(f"Error al guardar: {ex}", ft.colors.RED_700)
-
-        # Agregamos el recolector de archivos a las capas ocultas de la página
-        exportador = ft.FilePicker(on_result=guardar_csv)
-        page.overlay.append(exportador)
-
-        def iniciar_exportacion(id_c, nom):
-            nonlocal cliente_exportar_id, cliente_exportar_nombre
-            cliente_exportar_id = id_c
-            cliente_exportar_nombre = nom
-            exportador.save_file(
-                dialog_title="Guardar Estado de Cuenta",
-                file_name=f"Estado_Cuenta_{nom.replace(' ', '_')}.csv",
-                allowed_extensions=["csv"]
-            )
-
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.11 (Final)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.12 (Blindada)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
@@ -296,7 +258,6 @@ def main(page: ft.Page):
             if operacion == "restar":
                 if monto > cliente_seleccionado_deuda:
                     return notificar(f"No puedes amortizar más de la deuda actual (${cliente_seleccionado_deuda:.2f})", ft.colors.ORANGE_700)
-                    
                 monto_bd, tipo_transaccion, color_alerta, mensaje = -monto, "Amortización", ft.colors.GREEN_700, f"Amortización de ${monto:.2f} registrada"
             else:
                 monto_bd, tipo_transaccion, color_alerta, mensaje = monto, "Crédito", ft.colors.RED_700, f"Crédito de ${monto:.2f} otorgado"
@@ -334,7 +295,46 @@ def main(page: ft.Page):
             opcion_notificacion.value = "Ninguna" 
             page.open(dialogo_deuda)
 
-        # --- D. Eliminar Cliente ---
+        # --- D. NUEVO: Compartir Estado de Cuenta Detallado ---
+        opcion_envio_reporte = ft.Dropdown(label="Enviar Reporte por:", options=[ft.dropdown.Option("WhatsApp"), ft.dropdown.Option("Correo Electrónico")], value="WhatsApp", border_color=ft.colors.RED_400)
+
+        def procesar_envio_reporte(e):
+            conexion = sqlite3.connect(DB_NAME)
+            cursor = conexion.cursor()
+            cursor.execute("SELECT fecha, hora, tipo, monto FROM transacciones WHERE cliente_id = ? ORDER BY id ASC", (cliente_seleccionado_id,))
+            historial = cursor.fetchall()
+            conexion.close()
+
+            reporte = f"📊 *ESTADO DE CUENTA*\n👤 Cliente: {cliente_seleccionado_nombre}\n💰 Deuda Total: *${cliente_seleccionado_deuda:.2f}*\n\n*ÚLTIMOS MOVIMIENTOS:*\n"
+            if historial:
+                for row in historial:
+                    reporte += f"• {row[0]} | {row[2]}: ${row[3]:.2f}\n"
+            else:
+                reporte += "Sin movimientos registrados.\n"
+
+            reporte_codificado = urllib.parse.quote(reporte)
+            page.close(dialogo_reporte)
+            
+            if opcion_envio_reporte.value == "WhatsApp":
+                if cliente_seleccionado_tlf:
+                    tel_limpio = cliente_seleccionado_tlf.replace('+', '').replace(' ', '')
+                    page.launch_url(f"https://wa.me/{tel_limpio}?text={reporte_codificado}")
+                else:
+                    notificar("El cliente no tiene teléfono", ft.colors.ORANGE_700)
+            else:
+                if cliente_seleccionado_correo:
+                    page.launch_url(f"mailto:{cliente_seleccionado_correo}?subject=Estado de Cuenta&body={reporte_codificado}")
+                else:
+                    notificar("El cliente no tiene correo", ft.colors.ORANGE_700)
+
+        dialogo_reporte = ft.AlertDialog(title=ft.Text("Estado de Cuenta"), content=ft.Column([ft.Text("Compartir resumen de la deuda y movimientos detallados."), opcion_envio_reporte], tight=True), actions=[ft.FilledButton("Compartir", on_click=procesar_envio_reporte, style=ft.ButtonStyle(bgcolor=ft.colors.INDIGO_500, color=ft.colors.WHITE)), ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_reporte))], actions_alignment=ft.MainAxisAlignment.CENTER)
+
+        def abrir_dialogo_reporte(id_c, nom, tlf, corr, deu):
+            nonlocal cliente_seleccionado_id, cliente_seleccionado_nombre, cliente_seleccionado_tlf, cliente_seleccionado_correo, cliente_seleccionado_deuda
+            cliente_seleccionado_id, cliente_seleccionado_nombre, cliente_seleccionado_tlf, cliente_seleccionado_correo, cliente_seleccionado_deuda = id_c, nom, tlf, corr, deu
+            page.open(dialogo_reporte)
+
+        # --- E. Eliminar Cliente ---
         def eliminar_cliente_bd(e):
             conexion = sqlite3.connect(DB_NAME)
             cursor = conexion.cursor()
@@ -347,7 +347,6 @@ def main(page: ft.Page):
             cargar_datos()
 
         dialogo_eliminar = ft.AlertDialog(title=ft.Text("Eliminar Cliente", color=ft.colors.RED_400), content=ft.Text("¿Estás seguro de que deseas eliminar este registro?\nSe borrará todo su historial."), actions=[ft.TextButton("Sí, eliminar", on_click=eliminar_cliente_bd, style=ft.ButtonStyle(color=ft.colors.RED_400)), ft.TextButton("No, cancelar", on_click=lambda e: page.close(dialogo_eliminar))], actions_alignment=ft.MainAxisAlignment.END)
-
         def abrir_confirmacion_eliminar(id_cliente):
             nonlocal cliente_seleccionado_id
             cliente_seleccionado_id = id_cliente
@@ -385,11 +384,11 @@ def main(page: ft.Page):
                 else:
                     controles_historial.append(ft.Container(content=ft.Text("Sin movimientos registrados", size=12, color=ft.colors.ON_SURFACE_VARIANT), padding=ft.padding.only(left=20, bottom=10)))
                     
-                # SECCIÓN FINAL: Ícono verde de exportar
+                # Reemplazamos el botón de Excel por el de Compartir
                 fila_botones = ft.Row([
                     ft.TextButton("Nueva Operación", icon=ft.icons.ADD_CARD, icon_color=ft.colors.BLUE_400, on_click=lambda e, id_c=id_cliente, nom=nombre, tlf=telefono, corr=correo, d=deuda: abrir_opciones(id_c, nom, tlf, corr, d)),
                     ft.Row([
-                        ft.IconButton(icon=ft.icons.INSERT_DRIVE_FILE, icon_color=ft.colors.GREEN_400, tooltip="Exportar a Excel", on_click=lambda e, id_c=id_cliente, n=nombre: iniciar_exportacion(id_c, n)),
+                        ft.IconButton(icon=ft.icons.SHARE, icon_color=ft.colors.GREEN_400, tooltip="Compartir Estado de Cuenta", on_click=lambda e, id_c=id_cliente, n=nombre, t=telefono, c=correo, d=deuda: abrir_dialogo_reporte(id_c, n, t, c, d)),
                         ft.IconButton(icon=ft.icons.EDIT, icon_color=ft.colors.ORANGE_400, tooltip="Editar Cliente", on_click=lambda e, id_c=id_cliente, n=nombre, t=telefono, c=correo: abrir_dialogo_editar(id_c, n, t, c)),
                         ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=ft.colors.RED_400, tooltip="Eliminar Cliente", on_click=lambda e, id_c=id_cliente: abrir_confirmacion_eliminar(id_c))
                     ])
