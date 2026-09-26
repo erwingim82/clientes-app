@@ -4,7 +4,6 @@ from datetime import datetime
 import urllib.parse
 
 def main(page: ft.Page):
-    # 1. Configuración de la ventana y tema
     page.window_width = 380
     page.window_height = 680
     page.title = "Credi-Personas"
@@ -57,7 +56,6 @@ def main(page: ft.Page):
             if hay_usuarios:
                 page.client_storage.set("admin_creado", True)
 
-        # Campos con bordes rojos para visibilidad
         txt_usuario = ft.TextField(label="Usuario", prefix_icon=ft.icons.PERSON, width=300, border_color=ft.colors.RED_400)
         txt_clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, prefix_icon=ft.icons.LOCK, width=300, border_color=ft.colors.RED_400)
         
@@ -100,7 +98,6 @@ def main(page: ft.Page):
             else:
                 notificar("Por favor completa todos los campos", ft.colors.RED_700)
 
-        # --- RECUPERACIÓN DE CLAVE ---
         txt_rec_usuario = ft.TextField(label="Tu Usuario", border_color=ft.colors.RED_400)
         txt_rec_respuesta = ft.TextField(label="Respuesta", border_color=ft.colors.RED_400)
         txt_rec_nueva_clave = ft.TextField(label="Nueva Contraseña", password=True, can_reveal_password=True, border_color=ft.colors.RED_400)
@@ -124,7 +121,6 @@ def main(page: ft.Page):
                     page.update()
                 else:
                     notificar("Usuario no encontrado", ft.colors.RED_700)
-
             elif paso_recuperacion == 2:
                 resp_ingresada = txt_rec_respuesta.value.strip().lower()
                 cursor.execute("SELECT id FROM usuarios WHERE usuario = ? AND respuesta = ?", (usuario_recuperacion, resp_ingresada))
@@ -135,7 +131,6 @@ def main(page: ft.Page):
                     page.update()
                 else:
                     notificar("Respuesta incorrecta", ft.colors.RED_700)
-
             elif paso_recuperacion == 3:
                 if txt_rec_nueva_clave.value:
                     cursor.execute("UPDATE usuarios SET clave = ? WHERE usuario = ?", (txt_rec_nueva_clave.value, usuario_recuperacion))
@@ -147,11 +142,7 @@ def main(page: ft.Page):
             conexion.close()
 
         boton_avanzar_rec = ft.TextButton("Siguiente", on_click=avanzar_recuperacion)
-        dialogo_recuperar = ft.AlertDialog(
-            title=ft.Text("Recuperar Contraseña"),
-            content=ft.Column([ft.Text("Ingresa tu usuario:"), txt_rec_usuario], tight=True),
-            actions=[boton_avanzar_rec, ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_recuperar))]
-        )
+        dialogo_recuperar = ft.AlertDialog(title=ft.Text("Recuperar Contraseña"), content=ft.Column([ft.Text("Ingresa tu usuario:"), txt_rec_usuario], tight=True), actions=[boton_avanzar_rec, ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_recuperar))])
 
         def iniciar_recuperacion(e):
             nonlocal paso_recuperacion
@@ -161,25 +152,10 @@ def main(page: ft.Page):
             dialogo_recuperar.content = ft.Column([ft.Text("Ingresa tu usuario:"), txt_rec_usuario], tight=True)
             page.open(dialogo_recuperar)
 
-        # --- RENDERIZADO ACCESO ---
         if hay_usuarios:
-            elementos_pantalla = [
-                ft.Icon(ft.icons.LOCK_PERSON, size=80, color=ft.colors.INDIGO_400), 
-                ft.Text("Iniciar Sesión", size=24, weight=ft.FontWeight.BOLD), 
-                ft.Divider(color=ft.colors.TRANSPARENT, height=20), 
-                txt_usuario, txt_clave, 
-                ft.FilledButton("Entrar", on_click=iniciar_sesion, width=300, style=ft.ButtonStyle(bgcolor=ft.colors.INDIGO_500)), 
-                ft.TextButton("¿Olvidaste tu contraseña?", on_click=iniciar_recuperacion)
-            ]
+            elementos_pantalla = [ft.Icon(ft.icons.LOCK_PERSON, size=80, color=ft.colors.INDIGO_400), ft.Text("Iniciar Sesión", size=24, weight=ft.FontWeight.BOLD), ft.Divider(color=ft.colors.TRANSPARENT, height=20), txt_usuario, txt_clave, ft.FilledButton("Entrar", on_click=iniciar_sesion, width=300, style=ft.ButtonStyle(bgcolor=ft.colors.INDIGO_500)), ft.TextButton("¿Olvidaste tu contraseña?", on_click=iniciar_recuperacion)]
         else:
-            elementos_pantalla = [
-                ft.Icon(ft.icons.ADMIN_PANEL_SETTINGS, size=80, color=ft.colors.GREEN_400), 
-                ft.Text("Crear Administrador", size=24, weight=ft.FontWeight.BOLD), 
-                ft.Text("Configura tu acceso de seguridad", size=14, color=ft.colors.WHITE54),
-                ft.Divider(color=ft.colors.TRANSPARENT, height=10),
-                txt_usuario, txt_clave, drop_pregunta, txt_respuesta, 
-                ft.FilledButton("Registrar y Entrar", on_click=registrar_admin, width=300, style=ft.ButtonStyle(bgcolor=ft.colors.GREEN_600))
-            ]
+            elementos_pantalla = [ft.Icon(ft.icons.ADMIN_PANEL_SETTINGS, size=80, color=ft.colors.GREEN_400), ft.Text("Crear Administrador", size=24, weight=ft.FontWeight.BOLD), ft.Text("Configura tu acceso de seguridad", size=14, color=ft.colors.WHITE54), ft.Divider(color=ft.colors.TRANSPARENT, height=10), txt_usuario, txt_clave, drop_pregunta, txt_respuesta, ft.FilledButton("Registrar y Entrar", on_click=registrar_admin, width=300, style=ft.ButtonStyle(bgcolor=ft.colors.GREEN_600))]
 
         page.add(ft.Container(content=ft.Column(elementos_pantalla, alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), alignment=ft.alignment.center, expand=True))
 
@@ -188,6 +164,10 @@ def main(page: ft.Page):
     # ==========================================
     def construir_interfaz_principal():
         page.clean()
+
+        # Variables globales para la exportación
+        cliente_exportar_id = None
+        cliente_exportar_nombre = ""
 
         def cambiar_tema(e):
             if page.theme_mode == ft.ThemeMode.DARK:
@@ -198,16 +178,51 @@ def main(page: ft.Page):
 
         boton_tema = ft.IconButton(icon=ft.icons.LIGHT_MODE, on_click=cambiar_tema)
 
+        # --- EXPORTAR A EXCEL (CSV) ---
+        def guardar_csv(e: ft.FilePickerResultEvent):
+            if e.path:
+                try:
+                    conexion = sqlite3.connect(DB_NAME)
+                    cursor = conexion.cursor()
+                    cursor.execute("SELECT fecha, hora, tipo, monto FROM transacciones WHERE cliente_id = ? ORDER BY id ASC", (cliente_exportar_id,))
+                    historial = cursor.fetchall()
+                    cursor.execute("SELECT deuda FROM clientes WHERE id = ?", (cliente_exportar_id,))
+                    deuda_actual = cursor.fetchone()[0]
+                    conexion.close()
+
+                    # utf-8-sig obliga a Excel a reconocer los caracteres latinos correctamente
+                    with open(e.path, "w", encoding="utf-8-sig") as f:
+                        f.write(f"ESTADO DE CUENTA: {cliente_exportar_nombre.upper()}\n")
+                        f.write(f"DEUDA TOTAL ACTUAL:,${deuda_actual:.2f}\n\n")
+                        f.write("Fecha,Hora,Operacion,Monto\n")
+                        for row in historial:
+                            f.write(f"{row[0]},{row[1]},{row[2]},${row[3]:.2f}\n")
+
+                    notificar("Excel guardado con éxito. Búscalo en tus archivos.", ft.colors.GREEN_700)
+                except Exception as ex:
+                    notificar(f"Error al guardar: {ex}", ft.colors.RED_700)
+
+        # Agregamos el recolector de archivos a las capas ocultas de la página
+        exportador = ft.FilePicker(on_result=guardar_csv)
+        page.overlay.append(exportador)
+
+        def iniciar_exportacion(id_c, nom):
+            nonlocal cliente_exportar_id, cliente_exportar_nombre
+            cliente_exportar_id = id_c
+            cliente_exportar_nombre = nom
+            exportador.save_file(
+                dialog_title="Guardar Estado de Cuenta",
+                file_name=f"Estado_Cuenta_{nom.replace(' ', '_')}.csv",
+                allowed_extensions=["csv"]
+            )
+
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.10 (Prod)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.11 (Final)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
-        page.appbar = ft.AppBar(
-            title=ft.Text("Credi-Personas", weight=ft.FontWeight.BOLD), center_title=True, bgcolor=ft.colors.SURFACE_VARIANT, elevation=5,
-            actions=[boton_tema, ft.IconButton(ft.icons.INFO_OUTLINE, on_click=lambda e: page.open(dialogo_acerca))]
-        )
+        page.appbar = ft.AppBar(title=ft.Text("Credi-Personas", weight=ft.FontWeight.BOLD), center_title=True, bgcolor=ft.colors.SURFACE_VARIANT, elevation=5, actions=[boton_tema, ft.IconButton(ft.icons.INFO_OUTLINE, on_click=lambda e: page.open(dialogo_acerca))])
 
         cliente_seleccionado_id = None
         cliente_seleccionado_nombre, cliente_seleccionado_tlf, cliente_seleccionado_correo = "", "", ""
@@ -259,7 +274,7 @@ def main(page: ft.Page):
             editar_nombre.value, editar_telefono.value, editar_correo.value = nombre, tlf, correo
             page.open(dialogo_editar)
 
-        # --- C. Registrar Operación (Con Control de Saldo Negativo) ---
+        # --- C. Registrar Operación ---
         entrada_monto = ft.TextField(label="Ingrese el monto", keyboard_type=ft.KeyboardType.NUMBER, border_color=ft.colors.RED_400)
         opcion_notificacion = ft.Dropdown(label="Enviar Recibo por:", options=[ft.dropdown.Option("Ninguna"), ft.dropdown.Option("WhatsApp"), ft.dropdown.Option("Correo Electrónico")], value="Ninguna", border_color=ft.colors.RED_400)
         
@@ -279,7 +294,6 @@ def main(page: ft.Page):
             fecha, hora = boton_fecha.text, datetime.now().strftime("%I:%M %p")
                 
             if operacion == "restar":
-                # Validar que no amortice más de lo que debe
                 if monto > cliente_seleccionado_deuda:
                     return notificar(f"No puedes amortizar más de la deuda actual (${cliente_seleccionado_deuda:.2f})", ft.colors.ORANGE_700)
                     
@@ -371,9 +385,11 @@ def main(page: ft.Page):
                 else:
                     controles_historial.append(ft.Container(content=ft.Text("Sin movimientos registrados", size=12, color=ft.colors.ON_SURFACE_VARIANT), padding=ft.padding.only(left=20, bottom=10)))
                     
+                # SECCIÓN FINAL: Ícono verde de exportar
                 fila_botones = ft.Row([
                     ft.TextButton("Nueva Operación", icon=ft.icons.ADD_CARD, icon_color=ft.colors.BLUE_400, on_click=lambda e, id_c=id_cliente, nom=nombre, tlf=telefono, corr=correo, d=deuda: abrir_opciones(id_c, nom, tlf, corr, d)),
                     ft.Row([
+                        ft.IconButton(icon=ft.icons.INSERT_DRIVE_FILE, icon_color=ft.colors.GREEN_400, tooltip="Exportar a Excel", on_click=lambda e, id_c=id_cliente, n=nombre: iniciar_exportacion(id_c, n)),
                         ft.IconButton(icon=ft.icons.EDIT, icon_color=ft.colors.ORANGE_400, tooltip="Editar Cliente", on_click=lambda e, id_c=id_cliente, n=nombre, t=telefono, c=correo: abrir_dialogo_editar(id_c, n, t, c)),
                         ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=ft.colors.RED_400, tooltip="Eliminar Cliente", on_click=lambda e, id_c=id_cliente: abrir_confirmacion_eliminar(id_c))
                     ])
