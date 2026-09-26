@@ -1,6 +1,5 @@
 import flet as ft
 import sqlite3
-import os
 from datetime import datetime
 import urllib.parse
 
@@ -12,11 +11,9 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # RUTA PERMANENTE BLINDADA (PYTHON HOME)
+    # BASE DE DATOS NATIVA (FLET SE ENCARGA DE LA RUTA)
     # ==========================================
-    # Apunta a la memoria interna fija de Android, evitando pantallas en negro y pérdida de datos
-    directorio_usuario = os.path.expanduser("~")
-    DB_NAME = os.path.join(directorio_usuario, "credipersonas_definitiva.db")
+    DB_NAME = "credipersonas.db"
 
     def inicializar_bd():
         conexion = sqlite3.connect(DB_NAME)
@@ -174,7 +171,7 @@ def main(page: ft.Page):
 
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.14 (Estable)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.15\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
