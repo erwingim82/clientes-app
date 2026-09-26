@@ -12,23 +12,17 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # BASE DE DATOS (CON PREGUNTAS DE SEGURIDAD)
+    # BASE DE DATOS
     # ==========================================
     DB_NAME = "credipersonas_prod.db"
 
     def inicializar_bd():
         conexion = sqlite3.connect(DB_NAME)
+        # Forzamos la escritura inmediata en disco
+        conexion.execute("PRAGMA synchronous = FULL")
         cursor = conexion.cursor()
         
-        cursor.execute("CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, clave TEXT)")
-        
-        # Actualización para V1.8: Agregar columnas de seguridad sin borrar datos
-        try:
-            cursor.execute("ALTER TABLE usuarios ADD COLUMN pregunta TEXT")
-            cursor.execute("ALTER TABLE usuarios ADD COLUMN respuesta TEXT")
-        except sqlite3.OperationalError:
-            pass # Si ya existen, ignora el error
-            
+        cursor.execute("CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, clave TEXT, pregunta TEXT, respuesta TEXT)")
         cursor.execute("CREATE TABLE IF NOT EXISTS clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, deuda REAL, telefono TEXT, correo TEXT)")
         cursor.execute('''CREATE TABLE IF NOT EXISTS transacciones (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,17 +47,22 @@ def main(page: ft.Page):
         page.clean()
         page.appbar = None 
         
-        conexion = sqlite3.connect(DB_NAME)
-        cursor = conexion.cursor()
-        cursor.execute("SELECT COUNT(*) FROM usuarios")
-        hay_usuarios = cursor.fetchone()[0] > 0
-        conexion.close()
+        # Validamos primero con la memoria flash instantánea de Android
+        hay_usuarios = page.client_storage.contains_key("admin_creado")
+        
+        # Si no está en flash (ej. borró caché), verificamos SQLite
+        if not hay_usuarios:
+            conexion = sqlite3.connect(DB_NAME)
+            cursor = conexion.cursor()
+            cursor.execute("SELECT COUNT(*) FROM usuarios")
+            hay_usuarios = cursor.fetchone()[0] > 0
+            conexion.close()
+            if hay_usuarios:
+                page.client_storage.set("admin_creado", True)
 
-        # Elementos de Interfaz Login/Registro
         txt_usuario = ft.TextField(label="Usuario", prefix_icon=ft.icons.PERSON, width=300)
         txt_clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, prefix_icon=ft.icons.LOCK, width=300)
         
-        # Elementos nuevos para Registro de Seguridad
         drop_pregunta = ft.Dropdown(
             label="Pregunta de Seguridad",
             options=[
@@ -71,8 +70,7 @@ def main(page: ft.Page):
                 ft.dropdown.Option("¿En qué ciudad naciste?"),
                 ft.dropdown.Option("¿Cuál es tu color favorito?"),
                 ft.dropdown.Option("¿Nombre de tu mejor amigo de la infancia?"),
-            ],
-            width=300
+            ], width=300
         )
         txt_respuesta = ft.TextField(label="Respuesta secreta", width=300)
 
@@ -92,27 +90,27 @@ def main(page: ft.Page):
             if txt_usuario.value and txt_clave.value and drop_pregunta.value and txt_respuesta.value:
                 conexion = sqlite3.connect(DB_NAME)
                 cursor = conexion.cursor()
-                # Guardamos la respuesta en minúsculas para que sea más fácil validarla después
                 resp_seguridad = txt_respuesta.value.strip().lower()
                 cursor.execute("INSERT INTO usuarios (usuario, clave, pregunta, respuesta) VALUES (?, ?, ?, ?)", 
                                (txt_usuario.value, txt_clave.value, drop_pregunta.value, resp_seguridad))
                 conexion.commit()
                 conexion.close()
+                
+                # Sello de seguridad en la memoria flash (Evita el error al cerrar de golpe)
+                page.client_storage.set("admin_creado", True)
+                
                 notificar("Administrador creado con éxito", ft.colors.BLUE_700)
                 construir_interfaz_principal()
             else:
                 notificar("Por favor completa todos los campos", ft.colors.RED_700)
 
-        # --- FLUJO DE RECUPERACIÓN DE CLAVE ---
+        # --- RECUPERACIÓN DE CLAVE ---
         txt_rec_usuario = ft.TextField(label="Tu Usuario")
         txt_rec_respuesta = ft.TextField(label="Respuesta")
         txt_rec_nueva_clave = ft.TextField(label="Nueva Contraseña", password=True, can_reveal_password=True)
         lbl_pregunta = ft.Text(weight=ft.FontWeight.BOLD)
         paso_recuperacion = 1
         usuario_recuperacion = ""
-
-        def cerrar_recuperacion(e):
-            page.close(dialogo_recuperar)
 
         def avanzar_recuperacion(e):
             nonlocal paso_recuperacion, usuario_recuperacion
@@ -122,14 +120,14 @@ def main(page: ft.Page):
             if paso_recuperacion == 1:
                 cursor.execute("SELECT pregunta FROM usuarios WHERE usuario = ?", (txt_rec_usuario.value,))
                 res = cursor.fetchone()
-                if res and res[0]: # Si existe y tiene pregunta
+                if res and res[0]: 
                     usuario_recuperacion = txt_rec_usuario.value
                     lbl_pregunta.value = f"Pregunta: {res[0]}"
                     paso_recuperacion = 2
                     dialogo_recuperar.content = ft.Column([lbl_pregunta, txt_rec_respuesta], tight=True)
                     page.update()
                 else:
-                    notificar("Usuario no encontrado o no tiene pregunta configurada", ft.colors.RED_700)
+                    notificar("Usuario no encontrado", ft.colors.RED_700)
 
             elif paso_recuperacion == 2:
                 resp_ingresada = txt_rec_respuesta.value.strip().lower()
@@ -150,14 +148,13 @@ def main(page: ft.Page):
                     notificar("Contraseña actualizada. Inicia sesión.", ft.colors.GREEN_700)
                 else:
                     notificar("La contraseña no puede estar vacía", ft.colors.RED_700)
-
             conexion.close()
 
         boton_avanzar_rec = ft.TextButton("Siguiente", on_click=avanzar_recuperacion)
         dialogo_recuperar = ft.AlertDialog(
             title=ft.Text("Recuperar Contraseña"),
-            content=ft.Column([ft.Text("Ingresa tu usuario para buscar tu pregunta secreta:"), txt_rec_usuario], tight=True),
-            actions=[boton_avanzar_rec, ft.TextButton("Cancelar", on_click=cerrar_recuperacion)]
+            content=ft.Column([ft.Text("Ingresa tu usuario:"), txt_rec_usuario], tight=True),
+            actions=[boton_avanzar_rec, ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_recuperar))]
         )
 
         def iniciar_recuperacion(e):
@@ -165,30 +162,30 @@ def main(page: ft.Page):
             paso_recuperacion = 1
             txt_rec_usuario.value = txt_rec_respuesta.value = txt_rec_nueva_clave.value = ""
             boton_avanzar_rec.text = "Siguiente"
-            dialogo_recuperar.content = ft.Column([ft.Text("Ingresa tu usuario para buscar tu pregunta secreta:"), txt_rec_usuario], tight=True)
+            dialogo_recuperar.content = ft.Column([ft.Text("Ingresa tu usuario:"), txt_rec_usuario], tight=True)
             page.open(dialogo_recuperar)
 
-        # --- RENDERIZADO DE PANTALLA DE ACCESO ---
+        # --- RENDERIZADO ACCESO ---
         if hay_usuarios:
-            titulo = ft.Text("Iniciar Sesión", size=24, weight=ft.FontWeight.BOLD)
-            boton_accion = ft.FilledButton("Entrar", on_click=iniciar_sesion, width=300, style=ft.ButtonStyle(bgcolor=ft.colors.INDIGO_500))
-            boton_olvide = ft.TextButton("¿Olvidaste tu contraseña?", on_click=iniciar_recuperacion)
-            elementos_pantalla = [ft.Icon(ft.icons.LOCK_PERSON, size=80, color=ft.colors.INDIGO_400), titulo, ft.Divider(color=ft.colors.TRANSPARENT, height=20), txt_usuario, txt_clave, boton_accion, boton_olvide]
-        else:
-            titulo = ft.Text("Crear Administrador", size=24, weight=ft.FontWeight.BOLD)
-            boton_accion = ft.FilledButton("Registrar y Entrar", on_click=registrar_admin, width=300, style=ft.ButtonStyle(bgcolor=ft.colors.GREEN_600))
             elementos_pantalla = [
-                ft.Icon(ft.icons.ADMIN_PANEL_SETTINGS, size=80, color=ft.colors.GREEN_400), titulo, 
+                ft.Icon(ft.icons.LOCK_PERSON, size=80, color=ft.colors.INDIGO_400), 
+                ft.Text("Iniciar Sesión", size=24, weight=ft.FontWeight.BOLD), 
+                ft.Divider(color=ft.colors.TRANSPARENT, height=20), 
+                txt_usuario, txt_clave, 
+                ft.FilledButton("Entrar", on_click=iniciar_sesion, width=300, style=ft.ButtonStyle(bgcolor=ft.colors.INDIGO_500)), 
+                ft.TextButton("¿Olvidaste tu contraseña?", on_click=iniciar_recuperacion)
+            ]
+        else:
+            elementos_pantalla = [
+                ft.Icon(ft.icons.ADMIN_PANEL_SETTINGS, size=80, color=ft.colors.GREEN_400), 
+                ft.Text("Crear Administrador", size=24, weight=ft.FontWeight.BOLD), 
                 ft.Text("Configura tu acceso de seguridad", size=14, color=ft.colors.WHITE54),
                 ft.Divider(color=ft.colors.TRANSPARENT, height=10),
-                txt_usuario, txt_clave, drop_pregunta, txt_respuesta, boton_accion
+                txt_usuario, txt_clave, drop_pregunta, txt_respuesta, 
+                ft.FilledButton("Registrar y Entrar", on_click=registrar_admin, width=300, style=ft.ButtonStyle(bgcolor=ft.colors.GREEN_600))
             ]
 
-        contenedor_login = ft.Container(
-            content=ft.Column(elementos_pantalla, alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            alignment=ft.alignment.center, expand=True
-        )
-        page.add(contenedor_login)
+        page.add(ft.Container(content=ft.Column(elementos_pantalla, alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), alignment=ft.alignment.center, expand=True))
 
     # ==========================================
     # APLICACIÓN PRINCIPAL
@@ -198,20 +195,16 @@ def main(page: ft.Page):
 
         def cambiar_tema(e):
             if page.theme_mode == ft.ThemeMode.DARK:
-                page.theme_mode = ft.ThemeMode.LIGHT
-                page.bgcolor = ft.colors.BLUE_GREY_50
-                boton_tema.icon = ft.icons.DARK_MODE
+                page.theme_mode, page.bgcolor, boton_tema.icon = ft.ThemeMode.LIGHT, ft.colors.BLUE_GREY_50, ft.icons.DARK_MODE
             else:
-                page.theme_mode = ft.ThemeMode.DARK
-                page.bgcolor = ft.colors.BLUE_GREY_900
-                boton_tema.icon = ft.icons.LIGHT_MODE
+                page.theme_mode, page.bgcolor, boton_tema.icon = ft.ThemeMode.DARK, ft.colors.BLUE_GREY_900, ft.icons.LIGHT_MODE
             page.update()
 
         boton_tema = ft.IconButton(icon=ft.icons.LIGHT_MODE, on_click=cambiar_tema)
 
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.8 (Seguridad)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.9 (Prod)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
@@ -221,9 +214,7 @@ def main(page: ft.Page):
         )
 
         cliente_seleccionado_id = None
-        cliente_seleccionado_nombre = ""
-        cliente_seleccionado_tlf = ""
-        cliente_seleccionado_correo = ""
+        cliente_seleccionado_nombre, cliente_seleccionado_tlf, cliente_seleccionado_correo = "", "", ""
         cliente_seleccionado_deuda = 0.0
 
         # --- A. Nuevo Cliente ---
@@ -263,7 +254,7 @@ def main(page: ft.Page):
             notificar("Datos actualizados correctamente.", ft.colors.BLUE_700)
             cargar_datos()
 
-        dialogo_confirmar_edicion = ft.AlertDialog(title=ft.Text("Confirmar cambios", color=ft.colors.ORANGE_400), content=ft.Text("¿Estás seguro de modificar los datos personales de este cliente?"), actions=[ft.TextButton("Sí, guardar", on_click=confirmar_edicion_bd, style=ft.ButtonStyle(color=ft.colors.ORANGE_400)), ft.TextButton("No, volver", on_click=lambda e: page.close(dialogo_confirmar_edicion))], actions_alignment=ft.MainAxisAlignment.END)
+        dialogo_confirmar_edicion = ft.AlertDialog(title=ft.Text("Confirmar cambios", color=ft.colors.ORANGE_400), content=ft.Text("¿Estás seguro de modificar los datos personales?"), actions=[ft.TextButton("Sí, guardar", on_click=confirmar_edicion_bd, style=ft.ButtonStyle(color=ft.colors.ORANGE_400)), ft.TextButton("No, volver", on_click=lambda e: page.close(dialogo_confirmar_edicion))], actions_alignment=ft.MainAxisAlignment.END)
         dialogo_editar = ft.AlertDialog(title=ft.Text("Editar Cliente"), content=ft.Column([editar_nombre, editar_telefono, editar_correo], tight=True), actions=[ft.TextButton("Actualizar", on_click=lambda e: page.open(dialogo_confirmar_edicion)), ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_editar))])
 
         def abrir_dialogo_editar(id_cliente, nombre, tlf, correo):
@@ -278,8 +269,7 @@ def main(page: ft.Page):
         
         def cambiar_fecha(e):
             if selector_fecha.value:
-                boton_fecha.text = selector_fecha.value.strftime("%d/%m/%Y")
-                page.update()
+                boton_fecha.text, _ = selector_fecha.value.strftime("%d/%m/%Y"), page.update()
 
         selector_fecha = ft.DatePicker(first_date=datetime(2020, 1, 1), last_date=datetime(2030, 12, 31), on_change=cambiar_fecha)
         boton_fecha = ft.OutlinedButton(text=datetime.now().strftime("%d/%m/%Y"), icon=ft.icons.CALENDAR_MONTH, on_click=lambda e: page.open(selector_fecha))
@@ -287,37 +277,34 @@ def main(page: ft.Page):
         def procesar_deuda(operacion):
             try:
                 monto = float(entrada_monto.value.replace(",", ".")) 
-            except (ValueError, TypeError):
-                notificar("Monto numérico inválido", ft.colors.RED_700)
-                return
+            except ValueError:
+                return notificar("Monto numérico inválido", ft.colors.RED_700)
                 
             fecha, hora = boton_fecha.text, datetime.now().strftime("%I:%M %p")
                 
             if operacion == "restar":
-                monto_bd, tipo_transaccion, color_alerta = -monto, "Amortización", ft.colors.GREEN_700
-                mensaje = f"Amortización de ${monto:.2f} registrada"
+                monto_bd, tipo_transaccion, color_alerta, mensaje = -monto, "Amortización", ft.colors.GREEN_700, f"Amortización de ${monto:.2f} registrada"
             else:
-                monto_bd, tipo_transaccion, color_alerta = monto, "Crédito", ft.colors.RED_700
-                mensaje = f"Crédito de ${monto:.2f} otorgado"
+                monto_bd, tipo_transaccion, color_alerta, mensaje = monto, "Crédito", ft.colors.RED_700, f"Crédito de ${monto:.2f} otorgado"
                 
             saldo_final = cliente_seleccionado_deuda + monto_bd
-            texto_recibo_url = urllib.parse.quote(f"🧾 *RECIBO CREDI-PERSONAS*\nHola {cliente_seleccionado_nombre}, se ha registrado un/a {tipo_transaccion} por *${monto:.2f}* el {fecha} a las {hora}.\n\nTu saldo actualizado es de: *${saldo_final:.2f}*.") 
+            texto_recibo = urllib.parse.quote(f"🧾 *RECIBO CREDI-PERSONAS*\nHola {cliente_seleccionado_nombre}, se ha registrado un/a {tipo_transaccion} por *${monto:.2f}* el {fecha} a las {hora}.\n\nTu saldo actualizado es de: *${saldo_final:.2f}*.") 
 
             conexion = sqlite3.connect(DB_NAME)
+            conexion.execute("PRAGMA synchronous = FULL")
             cursor = conexion.cursor()
             cursor.execute("UPDATE clientes SET deuda = deuda + ? WHERE id = ?", (monto_bd, cliente_seleccionado_id))
             cursor.execute("INSERT INTO transacciones (cliente_id, fecha, hora, tipo, monto) VALUES (?, ?, ?, ?, ?)", (cliente_seleccionado_id, fecha, hora, tipo_transaccion, monto))
             conexion.commit()
             conexion.close()
             
-            entrada_monto.value = ""
-            eleccion_notif = opcion_notificacion.value
+            entrada_monto.value, eleccion_notif = "", opcion_notificacion.value
             page.close(dialogo_deuda) 
             
             if eleccion_notif == "WhatsApp" and cliente_seleccionado_tlf:
-                page.launch_url(f"https://wa.me/{cliente_seleccionado_tlf.replace('+', '').replace(' ', '')}?text={texto_recibo_url}")
+                page.launch_url(f"https://wa.me/{cliente_seleccionado_tlf.replace('+', '').replace(' ', '')}?text={texto_recibo}")
             elif eleccion_notif == "Correo Electrónico" and cliente_seleccionado_correo:
-                page.launch_url(f"mailto:{cliente_seleccionado_correo}?subject=Recibo de Operación&body={texto_recibo_url}")
+                page.launch_url(f"mailto:{cliente_seleccionado_correo}?subject=Recibo de Operación&body={texto_recibo}")
             else:
                 notificar(mensaje, color_alerta)
                 if eleccion_notif != "Ninguna": notificar("Faltan datos de contacto del cliente", ft.colors.ORANGE_700)
@@ -352,9 +339,6 @@ def main(page: ft.Page):
             cliente_seleccionado_id = id_cliente
             page.open(dialogo_eliminar)
 
-        # ==========================================
-        # INTERFAZ Y RENDERIZADO
-        # ==========================================
         page.floating_action_button = ft.FloatingActionButton(icon=ft.icons.ADD, bgcolor=ft.colors.INDIGO_500, on_click=lambda e: page.open(dialogo_nuevo))
         lista_clientes = ft.ListView(expand=True, spacing=10, padding=15)
 
@@ -396,10 +380,8 @@ def main(page: ft.Page):
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                 
                 controles_historial.extend([ft.Divider(height=1, color=ft.colors.OUTLINE_VARIANT), ft.Container(content=fila_botones, padding=ft.padding.only(left=10, right=10, top=5, bottom=5))])
-                
                 tarjeta = ft.Card(elevation=4, color=ft.colors.SURFACE_VARIANT, content=ft.ExpansionTile(title=ft.Text(nombre, weight=ft.FontWeight.BOLD, size=18), subtitle=ft.Text(texto_subtitulo, color=ft.colors.RED_400 if deuda > 0 else ft.colors.GREEN_500, weight=ft.FontWeight.W_500), leading=ft.CircleAvatar(content=ft.Text(nombre[0].upper(), weight=ft.FontWeight.BOLD), color=ft.colors.WHITE, bgcolor=ft.colors.INDIGO_400), controls=controles_historial))
                 lista_clientes.controls.append(tarjeta)
-                
             conexion.close()
             page.update()
 
@@ -407,7 +389,6 @@ def main(page: ft.Page):
         page.add(ft.Stack([marca_agua, lista_clientes], expand=True))
         cargar_datos()
 
-    # Iniciar flujo
     mostrar_pantalla_acceso()
 
 ft.app(target=main)
