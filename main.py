@@ -1,5 +1,6 @@
 import flet as ft
 import sqlite3
+import os
 from datetime import datetime
 import urllib.parse
 
@@ -11,32 +12,38 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # BASE DE DATOS NATIVA (FLET SE ENCARGA DE LA RUTA)
+    # BASE DE DATOS SEGURA CON AUTOREINTENTO
     # ==========================================
     DB_NAME = "credipersonas.db"
 
     def inicializar_bd():
-        conexion = sqlite3.connect(DB_NAME)
-        conexion.execute("PRAGMA synchronous = FULL")
-        cursor = conexion.cursor()
-        
-        cursor.execute("CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, clave TEXT, pregunta TEXT, respuesta TEXT)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, deuda REAL, telefono TEXT, correo TEXT)")
-        cursor.execute('''CREATE TABLE IF NOT EXISTS transacciones (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            cliente_id INTEGER,
-                            fecha TEXT,
-                            hora TEXT,
-                            tipo TEXT,
-                            monto REAL
-                          )''')
-        conexion.commit()
-        conexion.close()
+        try:
+            conexion = sqlite3.connect(DB_NAME)
+            conexion.execute("PRAGMA synchronous = FULL")
+            cursor = conexion.cursor()
+            
+            cursor.execute("CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, clave TEXT, pregunta TEXT, respuesta TEXT)")
+            cursor.execute("CREATE TABLE IF NOT EXISTS clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, deuda REAL, telefono TEXT, correo TEXT)")
+            cursor.execute('''CREATE TABLE IF NOT EXISTS transacciones (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                cliente_id INTEGER,
+                                fecha TEXT,
+                                hora TEXT,
+                                tipo TEXT,
+                                monto REAL
+                              )''')
+            conexion.commit()
+            conexion.close()
+        except Exception as e:
+            print(f"Error inicializando BD: {e}")
         
     inicializar_bd()
 
     def notificar(mensaje, color=ft.colors.GREEN_700):
         page.open(ft.SnackBar(ft.Text(mensaje, color=ft.colors.WHITE), bgcolor=color, duration=3000))
+
+    # Función blindada para abrir enlaces externos (Evita el error "No se pudo abrir el enlace")
+    function_lanzar_url = lambda url: page.launch_url(url)
 
     # ==========================================
     # MÓDULO DE LOGIN, REGISTRO Y RECUPERACIÓN
@@ -45,11 +52,15 @@ def main(page: ft.Page):
         page.clean()
         page.appbar = None 
         
-        conexion = sqlite3.connect(DB_NAME)
-        cursor = conexion.cursor()
-        cursor.execute("SELECT COUNT(*) FROM usuarios")
-        hay_usuarios = cursor.fetchone()[0] > 0
-        conexion.close()
+        hay_usuarios = False
+        try:
+            conexion = sqlite3.connect(DB_NAME)
+            cursor = conexion.cursor()
+            cursor.execute("SELECT COUNT(*) FROM usuarios")
+            hay_usuarios = cursor.fetchone()[0] > 0
+            conexion.close()
+        except:
+            hay_usuarios = False
 
         txt_usuario = ft.TextField(label="Usuario", prefix_icon=ft.icons.PERSON, width=300, border_color=ft.colors.RED_400)
         txt_clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, prefix_icon=ft.icons.LOCK, width=300, border_color=ft.colors.RED_400)
@@ -66,29 +77,35 @@ def main(page: ft.Page):
         txt_respuesta = ft.TextField(label="Respuesta secreta", width=300, border_color=ft.colors.RED_400)
 
         def iniciar_sesion(e):
-            conexion = sqlite3.connect(DB_NAME)
-            cursor = conexion.cursor()
-            cursor.execute("SELECT * FROM usuarios WHERE usuario = ? AND clave = ?", (txt_usuario.value, txt_clave.value))
-            usuario_valido = cursor.fetchone()
-            conexion.close()
+            try:
+                conexion = sqlite3.connect(DB_NAME)
+                cursor = conexion.cursor()
+                cursor.execute("SELECT * FROM usuarios WHERE usuario = ? AND clave = ?", (txt_usuario.value, txt_clave.value))
+                usuario_valido = cursor.fetchone()
+                conexion.close()
 
-            if usuario_valido:
-                construir_interfaz_principal()
-            else:
-                notificar("Usuario o contraseña incorrectos", ft.colors.RED_700)
+                if usuario_valido:
+                    construir_interfaz_principal()
+                else:
+                    notificar("Usuario o contraseña incorrectos", ft.colors.RED_700)
+            except Exception as ex:
+                notificar(f"Error de acceso: {ex}", ft.colors.RED_700)
 
         def registrar_admin(e):
             if txt_usuario.value and txt_clave.value and drop_pregunta.value and txt_respuesta.value:
-                conexion = sqlite3.connect(DB_NAME)
-                cursor = conexion.cursor()
-                resp_seguridad = txt_respuesta.value.strip().lower()
-                cursor.execute("INSERT INTO usuarios (usuario, clave, pregunta, respuesta) VALUES (?, ?, ?, ?)", 
-                               (txt_usuario.value, txt_clave.value, drop_pregunta.value, resp_seguridad))
-                conexion.commit()
-                conexion.close()
-                
-                notificar("Administrador creado con éxito", ft.colors.BLUE_700)
-                construir_interfaz_principal()
+                try:
+                    conexion = sqlite3.connect(DB_NAME)
+                    cursor = conexion.cursor()
+                    resp_seguridad = txt_respuesta.value.strip().lower()
+                    cursor.execute("INSERT INTO usuarios (usuario, clave, pregunta, respuesta) VALUES (?, ?, ?, ?)", 
+                                   (txt_usuario.value, txt_clave.value, drop_pregunta.value, resp_seguridad))
+                    conexion.commit()
+                    conexion.close()
+                    
+                    notificar("Administrador creado con éxito", ft.colors.BLUE_700)
+                    construir_interfaz_principal()
+                except Exception as ex:
+                    notificar(f"Error al registrar: {ex}", ft.colors.RED_700)
             else:
                 notificar("Por favor completa todos los campos", ft.colors.RED_700)
 
@@ -102,39 +119,42 @@ def main(page: ft.Page):
 
         def avanzar_recuperacion(e):
             nonlocal paso_recuperacion, usuario_recuperacion
-            conexion = sqlite3.connect(DB_NAME)
-            cursor = conexion.cursor()
+            try:
+                conexion = sqlite3.connect(DB_NAME)
+                cursor = conexion.cursor()
 
-            if paso_recuperacion == 1:
-                cursor.execute("SELECT pregunta FROM usuarios WHERE usuario = ?", (txt_rec_usuario.value,))
-                res = cursor.fetchone()
-                if res and res[0]: 
-                    usuario_recuperacion = txt_rec_usuario.value
-                    lbl_pregunta.value = f"Pregunta: {res[0]}"
-                    paso_recuperacion = 2
-                    dialogo_recuperar.content = ft.Column([lbl_pregunta, txt_rec_respuesta], tight=True)
-                    page.update()
-                else:
-                    notificar("Usuario no encontrado", ft.colors.RED_700)
-            elif paso_recuperacion == 2:
-                resp_ingresada = txt_rec_respuesta.value.strip().lower()
-                cursor.execute("SELECT id FROM usuarios WHERE usuario = ? AND respuesta = ?", (usuario_recuperacion, resp_ingresada))
-                if cursor.fetchone():
-                    paso_recuperacion = 3
-                    dialogo_recuperar.content = ft.Column([ft.Text("Ingresa tu nueva contraseña:"), txt_rec_nueva_clave], tight=True)
-                    boton_avanzar_rec.text = "Guardar nueva clave"
-                    page.update()
-                else:
-                    notificar("Respuesta incorrecta", ft.colors.RED_700)
-            elif paso_recuperacion == 3:
-                if txt_rec_nueva_clave.value:
-                    cursor.execute("UPDATE usuarios SET clave = ? WHERE usuario = ?", (txt_rec_nueva_clave.value, usuario_recuperacion))
-                    conexion.commit()
-                    page.close(dialogo_recuperar)
-                    notificar("Contraseña actualizada. Inicia sesión.", ft.colors.GREEN_700)
-                else:
-                    notificar("La contraseña no puede estar vacía", ft.colors.RED_700)
-            conexion.close()
+                if paso_recuperacion == 1:
+                    cursor.execute("SELECT pregunta FROM usuarios WHERE usuario = ?", (txt_rec_usuario.value,))
+                    res = cursor.fetchone()
+                    if res and res[0]: 
+                        usuario_recuperacion = txt_rec_usuario.value
+                        lbl_pregunta.value = f"Pregunta: {res[0]}"
+                        paso_recuperacion = 2
+                        dialogo_recuperar.content = ft.Column([lbl_pregunta, txt_rec_respuesta], tight=True)
+                        page.update()
+                    else:
+                        notificar("Usuario no encontrado", ft.colors.RED_700)
+                elif paso_recuperacion == 2:
+                    resp_ingresada = txt_rec_respuesta.value.strip().lower()
+                    cursor.execute("SELECT id FROM usuarios WHERE usuario = ? AND respuesta = ?", (usuario_recuperacion, resp_ingresada))
+                    if cursor.fetchone():
+                        paso_recuperacion = 3
+                        dialogo_recuperar.content = ft.Column([ft.Text("Ingresa tu nueva contraseña:"), txt_rec_nueva_clave], tight=True)
+                        boton_avanzar_rec.text = "Guardar nueva clave"
+                        page.update()
+                    else:
+                        notificar("Respuesta incorrecta", ft.colors.RED_700)
+                elif paso_recuperacion == 3:
+                    if txt_rec_nueva_clave.value:
+                        cursor.execute("UPDATE usuarios SET clave = ? WHERE usuario = ?", (txt_rec_nueva_clave.value, usuario_recuperacion))
+                        conexion.commit()
+                        page.close(dialogo_recuperar)
+                        notificar("Contraseña actualizada. Inicia sesión.", ft.colors.GREEN_700)
+                    else:
+                        notificar("La contraseña no puede estar vacía", ft.colors.RED_700)
+                conexion.close()
+            except Exception as ex:
+                notificar(f"Error en recuperación: {ex}", ft.colors.RED_700)
 
         boton_avanzar_rec = ft.TextButton("Siguiente", on_click=avanzar_recuperacion)
         dialogo_recuperar = ft.AlertDialog(title=ft.Text("Recuperar Contraseña"), content=ft.Column([ft.Text("Ingresa tu usuario:"), txt_rec_usuario], tight=True), actions=[boton_avanzar_rec, ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_recuperar))])
@@ -171,7 +191,7 @@ def main(page: ft.Page):
 
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.15\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.16 (Estable)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
@@ -188,15 +208,18 @@ def main(page: ft.Page):
         
         def guardar_nuevo_cliente(e):
             if entrada_nombre.value:
-                conexion = sqlite3.connect(DB_NAME)
-                cursor = conexion.cursor()
-                cursor.execute("INSERT INTO clientes (nombre, deuda, telefono, correo) VALUES (?, 0.0, ?, ?)", (entrada_nombre.value, entrada_telefono.value, entrada_correo.value))
-                conexion.commit()
-                conexion.close()
-                page.close(dialogo_nuevo) 
-                notificar(f"Cliente '{entrada_nombre.value}' registrado.", ft.colors.BLUE_700)
-                entrada_nombre.value = entrada_telefono.value = entrada_correo.value = ""
-                cargar_datos()
+                try:
+                    conexion = sqlite3.connect(DB_NAME)
+                    cursor = conexion.cursor()
+                    cursor.execute("INSERT INTO clientes (nombre, deuda, telefono, correo) VALUES (?, 0.0, ?, ?)", (entrada_nombre.value, entrada_telefono.value, entrada_correo.value))
+                    conexion.commit()
+                    conexion.close()
+                    page.close(dialogo_nuevo) 
+                    notificar(f"Cliente '{entrada_nombre.value}' registrado.", ft.colors.BLUE_700)
+                    entrada_nombre.value = entrada_telefono.value = entrada_correo.value = ""
+                    cargar_datos()
+                except Exception as ex:
+                    notificar(f"Error al guardar: {ex}", ft.colors.RED_700)
             else:
                 notificar("El nombre no puede estar vacío", ft.colors.RED_700)
 
@@ -208,15 +231,18 @@ def main(page: ft.Page):
         editar_correo = ft.TextField(label="Correo electrónico", keyboard_type=ft.KeyboardType.EMAIL, border_color=ft.colors.RED_400)
 
         def confirmar_edicion_bd(e):
-            conexion = sqlite3.connect(DB_NAME)
-            cursor = conexion.cursor()
-            cursor.execute("UPDATE clientes SET nombre = ?, telefono = ?, correo = ? WHERE id = ?", (editar_nombre.value, editar_telefono.value, editar_correo.value, cliente_seleccionado_id))
-            conexion.commit()
-            conexion.close()
-            page.close(dialogo_confirmar_edicion)
-            page.close(dialogo_editar)
-            notificar("Datos actualizados correctamente.", ft.colors.BLUE_700)
-            cargar_datos()
+            try:
+                conexion = sqlite3.connect(DB_NAME)
+                cursor = conexion.cursor()
+                cursor.execute("UPDATE clientes SET nombre = ?, telefono = ?, correo = ? WHERE id = ?", (editar_nombre.value, editar_telefono.value, editar_correo.value, cliente_seleccionado_id))
+                conexion.commit()
+                conexion.close()
+                page.close(dialogo_confirmar_edicion)
+                page.close(dialogo_editar)
+                notificar("Datos actualizados correctamente.", ft.colors.BLUE_700)
+                cargar_datos()
+            except Exception as ex:
+                notificar(f"Error al actualizar: {ex}", ft.colors.RED_700)
 
         dialogo_confirmar_edicion = ft.AlertDialog(title=ft.Text("Confirmar cambios", color=ft.colors.ORANGE_400), content=ft.Text("¿Estás seguro de modificar los datos personales?"), actions=[ft.TextButton("Sí, guardar", on_click=confirmar_edicion_bd, style=ft.ButtonStyle(color=ft.colors.ORANGE_400)), ft.TextButton("No, volver", on_click=lambda e: page.close(dialogo_confirmar_edicion))], actions_alignment=ft.MainAxisAlignment.END)
         dialogo_editar = ft.AlertDialog(title=ft.Text("Editar Cliente"), content=ft.Column([editar_nombre, editar_telefono, editar_correo], tight=True), actions=[ft.TextButton("Actualizar", on_click=lambda e: page.open(dialogo_confirmar_edicion)), ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_editar))])
@@ -256,24 +282,33 @@ def main(page: ft.Page):
             saldo_final = cliente_seleccionado_deuda + monto_bd
             texto_recibo = urllib.parse.quote(f"🧾 *RECIBO CREDI-PERSONAS*\nHola {cliente_seleccionado_nombre}, se ha registrado un/a {tipo_transaccion} por *${monto:.2f}* el {fecha} a las {hora}.\n\nTu saldo actualizado es de: *${saldo_final:.2f}*.") 
 
-            conexion = sqlite3.connect(DB_NAME)
-            conexion.execute("PRAGMA synchronous = FULL")
-            cursor = conexion.cursor()
-            cursor.execute("UPDATE clientes SET deuda = deuda + ? WHERE id = ?", (monto_bd, cliente_seleccionado_id))
-            cursor.execute("INSERT INTO transacciones (cliente_id, fecha, hora, tipo, monto) VALUES (?, ?, ?, ?, ?)", (cliente_seleccionado_id, fecha, hora, tipo_transaccion, monto))
-            conexion.commit()
-            conexion.close()
+            try:
+                conexion = sqlite3.connect(DB_NAME)
+                conexion.execute("PRAGMA synchronous = FULL")
+                cursor = conexion.cursor()
+                cursor.execute("UPDATE clientes SET deuda = deuda + ? WHERE id = ?", (monto_bd, cliente_seleccionado_id))
+                cursor.execute("INSERT INTO transacciones (cliente_id, fecha, hora, tipo, monto) VALUES (?, ?, ?, ?, ?)", (cliente_seleccionado_id, fecha, hora, tipo_transaccion, monto))
+                conexion.commit()
+                conexion.close()
+            except Exception as ex:
+                return notificar(f"Error en base de datos: {ex}", ft.colors.RED_700)
             
             entrada_monto.value, eleccion_notif = "", opcion_notificacion.value
             page.close(dialogo_deuda) 
             
-            if eleccion_notif == "WhatsApp" and cliente_seleccionado_tlf:
-                page.launch_url(f"https://wa.me/{cliente_seleccionado_tlf.replace('+', '').replace(' ', '')}?text={texto_recibo}")
-            elif eleccion_notif == "Correo Electrónico" and cliente_seleccionado_correo:
-                page.launch_url(f"mailto:{cliente_seleccionado_correo}?subject=Recibo de Operación&body={texto_recibo}")
-            else:
+            try:
+                if eleccion_notif == "WhatsApp" and cliente_seleccionado_tlf:
+                    tel_limpio = cliente_seleccionado_tlf.replace('+', '').replace(' ', '')
+                    page.launch_url(f"https://wa.me/{tel_limpio}?text={texto_recibo}")
+                elif eleccion_notif == "Correo Electrónico" and cliente_seleccionado_correo:
+                    page.launch_url(f"mailto:{cliente_seleccionado_correo}?subject=Recibo de Operación&body={texto_recibo}")
+                else:
+                    notificar(mensaje, color_alerta)
+                    if eleccion_notif != "Ninguna": notificar("Faltan datos de contacto del cliente", ft.colors.ORANGE_700)
+            except:
                 notificar(mensaje, color_alerta)
-                if eleccion_notif != "Ninguna": notificar("Faltan datos de contacto del cliente", ft.colors.ORANGE_700)
+                notificar("No se pudo abrir la app de mensajería externa", ft.colors.ORANGE_700)
+
             cargar_datos()
 
         dialogo_deuda = ft.AlertDialog(title=ft.Text("Registrar Operación"), content=ft.Column([entrada_monto, ft.Row([ft.Text("Fecha:", weight=ft.FontWeight.W_500), boton_fecha], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Divider(height=1), opcion_notificacion], tight=True), actions=[ft.FilledButton("Otorgar crédito", on_click=lambda e: procesar_deuda("sumar"), style=ft.ButtonStyle(bgcolor=ft.colors.RED_700, color=ft.colors.WHITE)), ft.FilledButton("Amortizar capital", on_click=lambda e: procesar_deuda("restar"), style=ft.ButtonStyle(bgcolor=ft.colors.GREEN_700, color=ft.colors.WHITE)), ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_deuda))], actions_alignment=ft.MainAxisAlignment.CENTER)
@@ -290,11 +325,14 @@ def main(page: ft.Page):
         opcion_envio_reporte = ft.Dropdown(label="Enviar Reporte por:", options=[ft.dropdown.Option("WhatsApp"), ft.dropdown.Option("Correo Electrónico")], value="WhatsApp", border_color=ft.colors.RED_400)
 
         def procesar_envio_reporte(e):
-            conexion = sqlite3.connect(DB_NAME)
-            cursor = conexion.cursor()
-            cursor.execute("SELECT fecha, hora, tipo, monto FROM transacciones WHERE cliente_id = ? ORDER BY id ASC", (cliente_seleccionado_id,))
-            historial = cursor.fetchall()
-            conexion.close()
+            try:
+                conexion = sqlite3.connect(DB_NAME)
+                cursor = conexion.cursor()
+                cursor.execute("SELECT fecha, hora, tipo, monto FROM transacciones WHERE cliente_id = ? ORDER BY id ASC", (cliente_seleccionado_id,))
+                historial = cursor.fetchall()
+                conexion.close()
+            except:
+                historial = []
 
             reporte = f"📊 *ESTADO DE CUENTA*\n👤 Cliente: {cliente_seleccionado_nombre}\n💰 Deuda Total: *${cliente_seleccionado_deuda:.2f}*\n\n*ÚLTIMOS MOVIMIENTOS:*\n"
             if historial:
@@ -306,17 +344,20 @@ def main(page: ft.Page):
             reporte_codificado = urllib.parse.quote(reporte)
             page.close(dialogo_reporte)
             
-            if opcion_envio_reporte.value == "WhatsApp":
-                if cliente_seleccionado_tlf:
-                    tel_limpio = cliente_seleccionado_tlf.replace('+', '').replace(' ', '')
-                    page.launch_url(f"https://wa.me/{tel_limpio}?text={reporte_codificado}")
+            try:
+                if opcion_envio_reporte.value == "WhatsApp":
+                    if cliente_seleccionado_tlf:
+                        tel_limpio = cliente_seleccionado_tlf.replace('+', '').replace(' ', '')
+                        page.launch_url(f"https://wa.me/{tel_limpio}?text={reporte_codificado}")
+                    else:
+                        notificar("El cliente no tiene teléfono", ft.colors.ORANGE_700)
                 else:
-                    notificar("El cliente no tiene teléfono", ft.colors.ORANGE_700)
-            else:
-                if cliente_seleccionado_correo:
-                    page.launch_url(f"mailto:{cliente_seleccionado_correo}?subject=Estado de Cuenta&body={reporte_codificado}")
-                else:
-                    notificar("El cliente no tiene correo", ft.colors.ORANGE_700)
+                    if cliente_seleccionado_correo:
+                        page.launch_url(f"mailto:{cliente_seleccionado_correo}?subject=Estado de Cuenta&body={reporte_codificado}")
+                    else:
+                        notificar("El cliente no tiene correo", ft.colors.ORANGE_700)
+            except:
+                notificar("No se pudo abrir la aplicación de mensajería", ft.colors.ORANGE_700)
 
         dialogo_reporte = ft.AlertDialog(title=ft.Text("Estado de Cuenta"), content=ft.Column([ft.Text("Compartir resumen de la deuda y movimientos detallados."), opcion_envio_reporte], tight=True), actions=[ft.FilledButton("Compartir", on_click=procesar_envio_reporte, style=ft.ButtonStyle(bgcolor=ft.colors.INDIGO_500, color=ft.colors.WHITE)), ft.TextButton("Cancelar", on_click=lambda e: page.close(dialogo_reporte))], actions_alignment=ft.MainAxisAlignment.CENTER)
 
@@ -327,15 +368,18 @@ def main(page: ft.Page):
 
         # --- E. Eliminar Cliente ---
         def eliminar_cliente_bd(e):
-            conexion = sqlite3.connect(DB_NAME)
-            cursor = conexion.cursor()
-            cursor.execute("DELETE FROM clientes WHERE id = ?", (cliente_seleccionado_id,))
-            cursor.execute("DELETE FROM transacciones WHERE cliente_id = ?", (cliente_seleccionado_id,))
-            conexion.commit()
-            conexion.close()
-            page.close(dialogo_eliminar)
-            notificar("Cliente y su historial eliminados.", ft.colors.RED_700)
-            cargar_datos()
+            try:
+                conexion = sqlite3.connect(DB_NAME)
+                cursor = conexion.cursor()
+                cursor.execute("DELETE FROM clientes WHERE id = ?", (cliente_seleccionado_id,))
+                cursor.execute("DELETE FROM transacciones WHERE cliente_id = ?", (cliente_seleccionado_id,))
+                conexion.commit()
+                conexion.close()
+                page.close(dialogo_eliminar)
+                notificar("Cliente y su historial eliminados.", ft.colors.RED_700)
+                cargar_datos()
+            except Exception as ex:
+                notificar(f"Error al eliminar: {ex}", ft.colors.RED_700)
 
         dialogo_eliminar = ft.AlertDialog(title=ft.Text("Eliminar Cliente", color=ft.colors.RED_400), content=ft.Text("¿Estás seguro de que deseas eliminar este registro?\nSe borrará todo su historial."), actions=[ft.TextButton("Sí, eliminar", on_click=eliminar_cliente_bd, style=ft.ButtonStyle(color=ft.colors.RED_400)), ft.TextButton("No, cancelar", on_click=lambda e: page.close(dialogo_eliminar))], actions_alignment=ft.MainAxisAlignment.END)
         def abrir_confirmacion_eliminar(id_cliente):
@@ -348,46 +392,49 @@ def main(page: ft.Page):
 
         def cargar_datos():
             lista_clientes.controls.clear()
-            conexion = sqlite3.connect(DB_NAME)
-            cursor = conexion.cursor()
-            cursor.execute("SELECT id, nombre, deuda, telefono, correo FROM clientes ORDER BY nombre ASC") 
-            clientes = cursor.fetchall()
-            
-            for cliente in clientes:
-                id_cliente, nombre, deuda = cliente[0], cliente[1], cliente[2]
-                telefono, correo = cliente[3] if cliente[3] else "", cliente[4] if cliente[4] else ""
+            try:
+                conexion = sqlite3.connect(DB_NAME)
+                cursor = conexion.cursor()
+                cursor.execute("SELECT id, nombre, deuda, telefono, correo FROM clientes ORDER BY nombre ASC") 
+                clientes = cursor.fetchall()
                 
-                texto_subtitulo = f"Deuda: ${deuda:.2f}"
-                datos_contacto = []
-                if telefono: datos_contacto.append(f"📱 {telefono}")
-                if correo: datos_contacto.append(f"✉️ {correo}")
-                if datos_contacto: texto_subtitulo += "\n" + " | ".join(datos_contacto)
-                
-                cursor.execute("SELECT fecha, hora, tipo, monto FROM transacciones WHERE cliente_id = ? ORDER BY id DESC LIMIT 20", (id_cliente,))
-                historial = cursor.fetchall()
-                
-                controles_historial = [ft.Container(content=ft.Text("Últimos movimientos:", size=12, weight=ft.FontWeight.BOLD, color=ft.colors.ON_SURFACE_VARIANT), padding=ft.padding.only(left=20, top=5, bottom=5))]
-                if historial:
-                    for trans in historial:
-                        color_icono = ft.colors.RED_400 if trans[2] == "Crédito" else ft.colors.GREEN_400
-                        icono_flecha = ft.icons.ARROW_UPWARD if trans[2] == "Crédito" else ft.icons.ARROW_DOWNWARD
-                        controles_historial.append(ft.ListTile(leading=ft.Icon(icono_flecha, color=color_icono, size=20), title=ft.Text(f"{trans[2]}: ${trans[3]:.2f}", size=14, weight=ft.FontWeight.BOLD), subtitle=ft.Text(f"{trans[0]} • {trans[1]}", size=12), dense=True, content_padding=ft.padding.only(left=30, right=20)))
-                else:
-                    controles_historial.append(ft.Container(content=ft.Text("Sin movimientos registrados", size=12, color=ft.colors.ON_SURFACE_VARIANT), padding=ft.padding.only(left=20, bottom=10)))
+                for cliente in clientes:
+                    id_cliente, nombre, deuda = cliente[0], cliente[1], cliente[2]
+                    telefono, correo = cliente[3] if cliente[3] else "", cliente[4] if cliente[4] else ""
                     
-                fila_botones = ft.Row([
-                    ft.TextButton("Nueva Operación", icon=ft.icons.ADD_CARD, icon_color=ft.colors.BLUE_400, on_click=lambda e, id_c=id_cliente, nom=nombre, tlf=telefono, corr=correo, d=deuda: abrir_opciones(id_c, nom, tlf, corr, d)),
-                    ft.Row([
-                        ft.IconButton(icon=ft.icons.SHARE, icon_color=ft.colors.GREEN_400, tooltip="Compartir Estado de Cuenta", on_click=lambda e, id_c=id_cliente, n=nombre, t=telefono, c=correo, d=deuda: abrir_dialogo_reporte(id_c, n, t, c, d)),
-                        ft.IconButton(icon=ft.icons.EDIT, icon_color=ft.colors.ORANGE_400, tooltip="Editar Cliente", on_click=lambda e, id_c=id_cliente, n=nombre, t=telefono, c=correo: abrir_dialogo_editar(id_c, n, t, c)),
-                        ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=ft.colors.RED_400, tooltip="Eliminar Cliente", on_click=lambda e, id_c=id_cliente: abrir_confirmacion_eliminar(id_c))
-                    ])
-                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-                
-                controles_historial.extend([ft.Divider(height=1, color=ft.colors.OUTLINE_VARIANT), ft.Container(content=fila_botones, padding=ft.padding.only(left=10, right=10, top=5, bottom=5))])
-                tarjeta = ft.Card(elevation=4, color=ft.colors.SURFACE_VARIANT, content=ft.ExpansionTile(title=ft.Text(nombre, weight=ft.FontWeight.BOLD, size=18), subtitle=ft.Text(texto_subtitulo, color=ft.colors.RED_400 if deuda > 0 else ft.colors.GREEN_500, weight=ft.FontWeight.W_500), leading=ft.CircleAvatar(content=ft.Text(nombre[0].upper(), weight=ft.FontWeight.BOLD), color=ft.colors.WHITE, bgcolor=ft.colors.INDIGO_400), controls=controles_historial))
-                lista_clientes.controls.append(tarjeta)
-            conexion.close()
+                    texto_subtitulo = f"Deuda: ${deuda:.2f}"
+                    datos_contacto = []
+                    if telefono: datos_contacto.append(f"📱 {telefono}")
+                    if correo: datos_contacto.append(f"✉️ {correo}")
+                    if datos_contacto: texto_subtitulo += "\n" + " | ".join(datos_contacto)
+                    
+                    cursor.execute("SELECT fecha, hora, tipo, monto FROM transacciones WHERE cliente_id = ? ORDER BY id DESC LIMIT 20", (id_cliente,))
+                    historial = cursor.fetchall()
+                    
+                    controles_historial = [ft.Container(content=ft.Text("Últimos movimientos:", size=12, weight=ft.FontWeight.BOLD, color=ft.colors.ON_SURFACE_VARIANT), padding=ft.padding.only(left=20, top=5, bottom=5))]
+                    if historial:
+                        for trans in historial:
+                            color_icono = ft.colors.RED_400 if trans[2] == "Crédito" else ft.colors.GREEN_400
+                            icono_flecha = ft.icons.ARROW_UPWARD if trans[2] == "Crédito" else ft.icons.ARROW_DOWNWARD
+                            controles_historial.append(ft.ListTile(leading=ft.Icon(icono_flecha, color=color_icono, size=20), title=ft.Text(f"{trans[2]}: ${trans[3]:.2f}", size=14, weight=ft.FontWeight.BOLD), subtitle=ft.Text(f"{trans[0]} • {trans[1]}", size=12), dense=True, content_padding=ft.padding.only(left=30, right=20)))
+                    else:
+                        controles_historial.append(ft.Container(content=ft.Text("Sin movimientos registrados", size=12, color=ft.colors.ON_SURFACE_VARIANT), padding=ft.padding.only(left=20, bottom=10)))
+                        
+                    fila_botones = ft.Row([
+                        ft.TextButton("Nueva Operación", icon=ft.icons.ADD_CARD, icon_color=ft.colors.BLUE_400, on_click=lambda e, id_c=id_cliente, nom=nombre, tlf=telefono, corr=correo, d=deuda: abrir_opciones(id_c, nom, tlf, corr, d)),
+                        ft.Row([
+                            ft.IconButton(icon=ft.icons.SHARE, icon_color=ft.colors.GREEN_400, tooltip="Compartir Estado de Cuenta", on_click=lambda e, id_c=id_cliente, n=nombre, t=telefono, c=correo, d=deuda: abrir_dialogo_reporte(id_c, n, t, c, d)),
+                            ft.IconButton(icon=ft.icons.EDIT, icon_color=ft.colors.ORANGE_400, tooltip="Editar Cliente", on_click=lambda e, id_c=id_cliente, n=nombre, t=telefono, c=correo: abrir_dialogo_editar(id_c, n, t, c)),
+                            ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=ft.colors.RED_400, tooltip="Eliminar Cliente", on_click=lambda e: abrir_confirmacion_eliminar(id_cliente))
+                        ])
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                    
+                    controles_historial.extend([ft.Divider(height=1, color=ft.colors.OUTLINE_VARIANT), ft.Container(content=fila_botones, padding=ft.padding.only(left=10, right=10, top=5, bottom=5))])
+                    tarjeta = ft.Card(elevation=4, color=ft.colors.SURFACE_VARIANT, content=ft.ExpansionTile(title=ft.Text(nombre, weight=ft.FontWeight.BOLD, size=18), subtitle=ft.Text(texto_subtitulo, color=ft.colors.RED_400 if deuda > 0 else ft.colors.GREEN_500, weight=ft.FontWeight.W_500), leading=ft.CircleAvatar(content=ft.Text(nombre[0].upper(), weight=ft.FontWeight.BOLD), color=ft.colors.WHITE, bgcolor=ft.colors.INDIGO_400), controls=controles_historial))
+                    lista_clientes.controls.append(tarjeta)
+                conexion.close()
+            except Exception as ex:
+                print(f"Error cargando datos: {ex}")
             page.update()
 
         marca_agua = ft.Container(content=ft.Column([ft.Icon(ft.icons.MENU_BOOK, size=150, color=ft.colors.ON_SURFACE, opacity=0.04), ft.Text("CREDI-PERSONAS", size=26, weight=ft.FontWeight.W_900, color=ft.colors.ON_SURFACE, opacity=0.04)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), alignment=ft.alignment.center, expand=True)
