@@ -1,6 +1,7 @@
 import flet as ft
 import sqlite3
 import os
+from pathlib import Path
 from datetime import datetime
 import urllib.parse
 
@@ -12,15 +13,19 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # RUTA PERMANENTE BLINDADA (EVITA EL REINICIO)
+    # RUTA NATIVA BLINDADA (PATHLIB)
     # ==========================================
+    # Obtiene la ruta de documentos privada del dispositivo donde la app tiene permisos totales
     try:
-        directorio_usuario = os.path.expanduser("~")
-        if not os.path.exists(directorio_usuario):
-            os.makedirs(directorio_usuario, exist_ok=True)
-        DB_NAME = os.path.join(directorio_usuario, "credipersonas_definitiva.db")
+        if page.platform == ft.PagePlatform.ANDROID or page.platform == ft.PagePlatform.IOS:
+            directorio_base = Path(page.get_user_data_dir())
+        else:
+            directorio_base = Path(os.getcwd())
+            
+        directorio_base.mkdir(parents=True, exist_ok=True)
+        DB_NAME = str(directorio_base / "credipersonas_v118.db")
     except:
-        DB_NAME = "credipersonas.db" # Respaldo de seguridad si falla
+        DB_NAME = "credipersonas_respaldo.db"
 
     def inicializar_bd():
         try:
@@ -194,7 +199,7 @@ def main(page: ft.Page):
 
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.17 (Definitiva)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.18\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
