@@ -12,11 +12,11 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # BASE DE DATOS SEGURA (ANCLADA A MEMORIA FIJA)
+    # RUTA BLINDADA PERMANENTE (FLET APP STORAGE)
     # ==========================================
-    # Extraemos la ruta profunda y permanente del celular (HOME)
-    directorio_seguro = os.environ.get("HOME", os.path.abspath(os.getcwd()))
-    DB_NAME = os.path.join(directorio_seguro, "credipersonas_blindado.db")
+    # Garantiza que la base de datos nunca cambie de lugar al abrir WhatsApp o Correo
+    ruta_base = page.app_storage_dir if page.app_storage_dir else os.getcwd()
+    DB_NAME = os.path.join(ruta_base, "credipersonas_permanente.db")
 
     def inicializar_bd():
         conexion = sqlite3.connect(DB_NAME)
@@ -48,16 +48,12 @@ def main(page: ft.Page):
         page.clean()
         page.appbar = None 
         
-        hay_usuarios = page.client_storage.contains_key("admin_creado")
-        
-        if not hay_usuarios:
-            conexion = sqlite3.connect(DB_NAME)
-            cursor = conexion.cursor()
-            cursor.execute("SELECT COUNT(*) FROM usuarios")
-            if cursor.fetchone()[0] > 0:
-                hay_usuarios = True
-                page.client_storage.set("admin_creado", True)
-            conexion.close()
+        # Verificamos directamente en la base de datos permanente
+        conexion = sqlite3.connect(DB_NAME)
+        cursor = conexion.cursor()
+        cursor.execute("SELECT COUNT(*) FROM usuarios")
+        hay_usuarios = cursor.fetchone()[0] > 0
+        conexion.close()
 
         txt_usuario = ft.TextField(label="Usuario", prefix_icon=ft.icons.PERSON, width=300, border_color=ft.colors.RED_400)
         txt_clave = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, prefix_icon=ft.icons.LOCK, width=300, border_color=ft.colors.RED_400)
@@ -95,7 +91,6 @@ def main(page: ft.Page):
                 conexion.commit()
                 conexion.close()
                 
-                page.client_storage.set("admin_creado", True)
                 notificar("Administrador creado con éxito", ft.colors.BLUE_700)
                 construir_interfaz_principal()
             else:
@@ -180,7 +175,7 @@ def main(page: ft.Page):
 
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.12 (Blindada)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.13 (Definitiva)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
@@ -295,7 +290,7 @@ def main(page: ft.Page):
             opcion_notificacion.value = "Ninguna" 
             page.open(dialogo_deuda)
 
-        # --- D. NUEVO: Compartir Estado de Cuenta Detallado ---
+        # --- D. Compartir Estado de Cuenta Detallado ---
         opcion_envio_reporte = ft.Dropdown(label="Enviar Reporte por:", options=[ft.dropdown.Option("WhatsApp"), ft.dropdown.Option("Correo Electrónico")], value="WhatsApp", border_color=ft.colors.RED_400)
 
         def procesar_envio_reporte(e):
@@ -384,7 +379,6 @@ def main(page: ft.Page):
                 else:
                     controles_historial.append(ft.Container(content=ft.Text("Sin movimientos registrados", size=12, color=ft.colors.ON_SURFACE_VARIANT), padding=ft.padding.only(left=20, bottom=10)))
                     
-                # Reemplazamos el botón de Excel por el de Compartir
                 fila_botones = ft.Row([
                     ft.TextButton("Nueva Operación", icon=ft.icons.ADD_CARD, icon_color=ft.colors.BLUE_400, on_click=lambda e, id_c=id_cliente, nom=nombre, tlf=telefono, corr=correo, d=deuda: abrir_opciones(id_c, nom, tlf, corr, d)),
                     ft.Row([
