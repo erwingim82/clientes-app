@@ -12,11 +12,11 @@ def main(page: ft.Page):
     page.bgcolor = ft.colors.BLUE_GREY_900
 
     # ==========================================
-    # RUTA BLINDADA PERMANENTE (FLET APP STORAGE)
+    # RUTA PERMANENTE BLINDADA (PYTHON HOME)
     # ==========================================
-    # Garantiza que la base de datos nunca cambie de lugar al abrir WhatsApp o Correo
-    ruta_base = page.app_storage_dir if page.app_storage_dir else os.getcwd()
-    DB_NAME = os.path.join(ruta_base, "credipersonas_permanente.db")
+    # Apunta a la memoria interna fija de Android, evitando pantallas en negro y pérdida de datos
+    directorio_usuario = os.path.expanduser("~")
+    DB_NAME = os.path.join(directorio_usuario, "credipersonas_definitiva.db")
 
     def inicializar_bd():
         conexion = sqlite3.connect(DB_NAME)
@@ -48,7 +48,6 @@ def main(page: ft.Page):
         page.clean()
         page.appbar = None 
         
-        # Verificamos directamente en la base de datos permanente
         conexion = sqlite3.connect(DB_NAME)
         cursor = conexion.cursor()
         cursor.execute("SELECT COUNT(*) FROM usuarios")
@@ -175,7 +174,7 @@ def main(page: ft.Page):
 
         dialogo_acerca = ft.AlertDialog(
             title=ft.Text("Acerca de", weight=ft.FontWeight.BOLD),
-            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.13 (Definitiva)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([ft.Text("Credi-Personas\nVersión V1.14 (Estable)\n\nDesarrollado por: EIM", size=16, text_align=ft.TextAlign.CENTER), ft.TextButton(content=ft.Row([ft.Icon(ft.icons.EMAIL, color=ft.colors.BLUE_400), ft.Text("Soporte", color=ft.colors.BLUE_400)], alignment=ft.MainAxisAlignment.CENTER, tight=True), on_click=lambda e: page.launch_url("mailto:myconsultingsca@gmail.com?subject=Soporte App"))], tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[ft.TextButton("Cerrar", on_click=lambda e: page.close(dialogo_acerca))]
         )
 
