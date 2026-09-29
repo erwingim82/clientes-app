@@ -1,4 +1,4 @@
-flet as ft
+import flet as ft
 
 import sqlite3
 
